@@ -1,8 +1,16 @@
-# 🌍 PlanetAlign
+<div align="center">
+<img src="icon.png" border="0" width=600px style="margin:-100px;"/>
+</div>
 
-**PlanetAlign** is a comprehensive Python library for benchmarking **Network Alignment (NA)** algorithms.
+<div align="center">
+    <a href="https://arxiv.org/pdf/2505.21366">
+    <img src="https://img.shields.io/static/v1?label=ICLR'26&message=Paper&color=red"></a>
+    <a href="https://planetalign.readthedocs.io/en/latest/"><img src="https://img.shields.io/badge/Documentation-PlanetAlign-blueviolet"></a>
+    <a href="https://github.com/yq-leo/PlanetAlign/blob/main/LICENSE.txt"><img src="https://badgen.net/github/license/yq-leo/PlanetAlign?color=green"></a>
+    <a href="https://github.com/yq-leo/PlanetAlign"><img src="https://img.shields.io/badge/PRs-Welcome-blue.svg"></a>
+</div>
 
----
+# PlanetAlign: A comprehensive Python library for Network Alignment
 
 ## 🚀 Features
 
@@ -16,10 +24,10 @@
 
 ## 📦 Installation
 
-Download repo from https://anonymous.4open.science/r/PlanetAlign-E9BA, then run
+Download repo from https://github.com/yq-leo/PlanetAlign, then run
 
 ```bash
-cd PlanetAlign-E9BA
+cd PlanetAlign
 pip install -e .
 ```
 
@@ -27,4 +35,4 @@ pip install -e .
 
 ## 📃 Documentation & Tutorial
 
-For detailed documentations and a quick-start tutorial, please see https://planetalign.netlify.app
+For detailed documentations and a quick-start tutorial, please see https://planetalign.readthedocs.io/en/latest/
