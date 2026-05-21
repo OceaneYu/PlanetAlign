@@ -1,5 +1,5 @@
 <div align="center">
-<img src="icon.png" border="0" width=600px style="margin:-100px;"/>
+<img src="icon.png" border="0" width=600px;/>
 </div>
 
 <div align="center">
@@ -10,7 +10,7 @@
     <a href="https://github.com/yq-leo/PlanetAlign"><img src="https://img.shields.io/badge/PRs-Welcome-blue.svg"></a>
 </div>
 
-# PlanetAlign: A comprehensive Python library for Network Alignment
+# PlanetAlign: A comprehensive Python library for NA
 
 ## 🚀 Features
 
