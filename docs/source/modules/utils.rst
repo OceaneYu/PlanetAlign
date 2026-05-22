@@ -26,6 +26,7 @@ PlanetAlign.utils
     :template: autosummary/only_class.rst
 
     add_edge_noises
+    add_node_noises
     add_attr_noises
     add_sup_noises
 
