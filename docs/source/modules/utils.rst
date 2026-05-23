@@ -27,7 +27,7 @@ PlanetAlign.utils
 
     add_edge_noises
     add_node_noises
-    add_attr_noises
+    .. add_attr_noises
     add_sup_noises
 
 **Visualization Functions**
