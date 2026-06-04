@@ -165,3 +165,9 @@ pynetalign_venv/
 util_code/
 playground/
 exps/reformat.ipynb
+
+# Project-local generated artifacts
+logs/
+.DS_Store
+data/*.pt
+data/m2m/*.pt
