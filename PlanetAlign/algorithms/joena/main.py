@@ -138,4 +138,5 @@ class JOENA(BaseModel):
                            infer_time=round(refer_time, 4),
                            verbose=verbose)
 
+        self.S = S.detach()
         return S.detach(), logger

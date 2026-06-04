@@ -133,6 +133,18 @@ class HOT(BaseModel):
                    infer_time=round(infer_time, 4),
                    verbose=verbose)
 
+        self.sim_tensor_dict = sim_tensor_dict
+        self.cluster_nodes_dict = cluster_nodes_dict
+        if len(graphs) == 2:
+            S = torch.zeros(graphs[0].num_nodes, graphs[1].num_nodes, dtype=self.dtype)
+            for cid in range(num_clusters):
+                src_idx, tgt_idx = cluster_nodes_dict[cid]
+                sim = sim_tensor_dict[cid]
+                if sim.numel() == 0:
+                    continue
+                S[src_idx.unsqueeze(1), tgt_idx.unsqueeze(0)] = sim.to(self.dtype)
+            self.S = S
+
         return sim_tensor_dict, logger
 
     def _multi_fgw(self, cross_cost_tensor, A, marginal_dists, in_iters, out_iters, tau=0.5, eps=1e-5):

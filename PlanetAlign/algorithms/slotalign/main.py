@@ -161,6 +161,7 @@ class SLOTAlign(BaseModel):
                            verbose=verbose)
         print(f'GW OT optimization done. Time taken: {time.time() - t0:.2f}s')
 
+        self.S = S
         return S, logger
 
     def get_intra_graph_similarity(self, graph, gcn, anchor_nodes, use_attr):
@@ -217,4 +218,3 @@ class SLOTAlign(BaseModel):
 
         S = (a @ b.T) * kernel
         return S
-    

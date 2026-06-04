@@ -16,6 +16,8 @@ from .hot import HOT
 from .joena import JOENA
 from .dualmatch import DualMatch
 from .meaformer import MEAformer
+from .m2m_align import M2MAlign
+from .tgae import TGAE
 
 __all__ = [
     'IsoRank',
@@ -33,7 +35,9 @@ __all__ = [
     'HOT',
     'JOENA',
     'DualMatch',
-    'MEAformer'
+    'MEAformer',
+    'M2MAlign',
+    'TGAE'
 ]
 
 classes = copy.copy(__all__)

@@ -210,6 +210,7 @@ class PARROT(BaseModel):
                        infer_time=round(infer_time, 4),
                        verbose=verbose)
 
+        self.S = S
         return S, logger
 
     def get_transport_cost(self, graph1, graph2, anchor_links, max_iters_sep_rwr, max_iters_prod_rwr, use_attr, verbose):
