@@ -171,3 +171,10 @@ logs/
 .DS_Store
 data/*.pt
 data/m2m/*.pt
+data/**/*.pt # 目录及子目录下的所有pt文件都被忽略
+data/**/*.pkl
+data/**/*.npy
+data/**/*.npz
+data/**/*.csv
+data/**/*.json
+data/**/*.jsonl
