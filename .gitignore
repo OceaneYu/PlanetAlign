@@ -171,7 +171,8 @@ logs/
 .DS_Store
 data/*.pt
 data/m2m/*.pt
-data/**/*.pt # 目录及子目录下的所有pt文件都被忽略
+# Ignore generated PyTorch datasets in nested data directories.
+data/**/*.pt
 data/**/*.pkl
 data/**/*.npy
 data/**/*.npz
