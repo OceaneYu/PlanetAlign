@@ -57,6 +57,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "planeta
 import PlanetAlign
 from PlanetAlign.data import Dataset
 from PlanetAlign.metrics import many_to_many_scores, similarity_to_pred_entities
+from PlanetAlign.m2m import evaluate_predictions
 from PlanetAlign.utils import pairwise_cosine_similarity
 
 
@@ -204,6 +205,19 @@ def _algo_configs(profile: str) -> Dict[str, Dict[str, Any]]:
                 "train_kwargs": _quick({"use_attr": True}),
                 "mode": "self.S",
             },
+            "GroupJOENA": {
+                "factory": lambda: PlanetAlign.algorithms.GroupJOENA(
+                    hidden_dim=32,
+                    out_dim=32,
+                    max_epochs=5,
+                    eval_interval=5,
+                    reconstruction_weight=0.0,
+                ),
+                "train_kwargs": _quick({"use_attr": True}),
+                "mode": "self.S",
+                "needs_num_groups": True,
+                "oracle_num_groups": True,
+            },
             "TGAE": {
                 "factory": lambda: PlanetAlign.algorithms.TGAE(
                     num_hidden_layers=3,
@@ -294,6 +308,18 @@ def _algo_configs(profile: str) -> Dict[str, Dict[str, Any]]:
                 "factory": lambda: PlanetAlign.algorithms.M2MAlign(),
                 "train_kwargs": _full({"use_attr": True}),
                 "mode": "self.S",
+            },
+            "GroupJOENA": {
+                "factory": lambda: PlanetAlign.algorithms.GroupJOENA(
+                    hidden_dim=128,
+                    out_dim=128,
+                    max_epochs=20,
+                    eval_interval=5,
+                ),
+                "train_kwargs": _full({"use_attr": True}),
+                "mode": "self.S",
+                "needs_num_groups": True,
+                "oracle_num_groups": True,
             },
             "TGAE": {
                 "factory": lambda: PlanetAlign.algorithms.TGAE(
@@ -408,6 +434,10 @@ def evaluate_algorithm(
     started = time.perf_counter()
     try:
         algo = config["factory"]().to("cpu")
+        if config.get("needs_num_groups"):
+            train_kwargs.setdefault("num_groups", len(gt_entities))
+        if config.get("oracle_num_groups"):
+            train_kwargs.setdefault("oracle_num_groups", True)
         ret = algo.train(
             dataset=dataset,
             gids=GIDS,
@@ -421,14 +451,25 @@ def evaluate_algorithm(
         algo.S = s.to(algo.device)
 
         one_to_one = algo.test(dataset=dataset, gids=GIDS, metrics=ONE_TO_ONE_METRICS)
-        pred = similarity_to_pred_entities(s, gt_entities)
-        m2m = many_to_many_scores(gt_entities, pred, metrics=M2M_METRICS)
+        if algo_name == "GroupJOENA":
+            pred = algo.predict_many_to_many(gt_entities, target_size_mode="group")
+            m2m = evaluate_predictions(gt_entities, pred, metrics=M2M_METRICS)
+        else:
+            pred = similarity_to_pred_entities(s, gt_entities)
+            m2m = many_to_many_scores(gt_entities, pred, metrics=M2M_METRICS)
+
+        logged_train_kwargs = {
+            key: value for key, value in train_kwargs.items()
+            if key != "gt_entities"
+        }
+        if "gt_entities" in train_kwargs:
+            logged_train_kwargs["num_gt_entities"] = len(train_kwargs["gt_entities"])
 
         record.update(
             {
                 "status": "ok",
                 "time_s": round(time.perf_counter() - started, 4),
-                "train_kwargs": train_kwargs,
+                "train_kwargs": logged_train_kwargs,
                 **one_to_one,
                 **m2m,
             }
@@ -446,11 +487,17 @@ def evaluate_algorithm(
             record.update(_flatten_metrics("TGAE-local-", local_scores))
 
     except Exception as exc:  # pragma: no cover - intentionally keeps long sweeps alive.
+        logged_train_kwargs = {
+            key: value for key, value in train_kwargs.items()
+            if key != "gt_entities"
+        }
+        if "gt_entities" in train_kwargs:
+            logged_train_kwargs["num_gt_entities"] = len(train_kwargs["gt_entities"])
         record.update(
             {
                 "status": "error",
                 "time_s": round(time.perf_counter() - started, 4),
-                "train_kwargs": train_kwargs,
+                "train_kwargs": logged_train_kwargs,
                 "error": f"{type(exc).__name__}: {exc}",
                 "traceback": traceback.format_exc(),
             }
