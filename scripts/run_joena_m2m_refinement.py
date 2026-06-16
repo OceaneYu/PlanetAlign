@@ -98,8 +98,26 @@ def run_joena(dataset: Dataset, use_attr: bool, epochs: int) -> Tuple[JOENA, tor
     return model, model.S.detach().to(torch.float32).cpu(), elapsed
 
 
-def run_m2m_align(dataset: Dataset, use_attr: bool, init_s: torch.Tensor | None = None) -> Tuple[M2MAlign, torch.Tensor, float]:
-    model = M2MAlign().to("cpu")
+def m2m_align_kwargs(args: argparse.Namespace) -> Dict[str, Any]:
+    return {
+        "alpha": args.m2m_alpha,
+        "tau": args.m2m_tau,
+        "overlap_slack": args.m2m_overlap_slack,
+        "lambda_struct": args.m2m_lambda_struct,
+        "beta": args.m2m_beta,
+        "max_group_size": args.m2m_max_group_size,
+        "n_iter": args.m2m_n_iter,
+        "smooth_source": args.m2m_smooth_source,
+    }
+
+
+def run_m2m_align(
+    dataset: Dataset,
+    use_attr: bool,
+    kwargs: Mapping[str, Any],
+    init_s: torch.Tensor | None = None,
+) -> Tuple[M2MAlign, torch.Tensor, float]:
+    model = M2MAlign(**dict(kwargs)).to("cpu")
     started = time.perf_counter()
     if init_s is None:
         model.train(dataset=dataset, gids=GIDS, use_attr=use_attr, save_log=False, verbose=False)
@@ -125,6 +143,7 @@ def write_outputs(records: List[Dict[str, Any]], matrix_info: List[Dict[str, Any
             "seed": args.seed,
             "joena_epochs": args.joena_epochs,
             "use_attr": args.use_attr,
+            "m2m_align": m2m_align_kwargs(args),
         },
         "matrix_info": matrix_info,
         "records": records,
@@ -164,6 +183,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--joena-epochs", type=int, default=10)
     parser.add_argument("--use-attr", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--m2m-alpha", type=float, default=0.6)
+    parser.add_argument("--m2m-tau", type=float, default=0.95)
+    parser.add_argument("--m2m-overlap-slack", type=float, default=0.10)
+    parser.add_argument("--m2m-lambda-struct", type=float, default=0.5)
+    parser.add_argument("--m2m-beta", type=float, default=0.6)
+    parser.add_argument("--m2m-max-group-size", type=int, default=4)
+    parser.add_argument("--m2m-n-iter", type=int, default=2)
+    parser.add_argument("--m2m-smooth-source", action="store_true")
     return parser.parse_args()
 
 
@@ -179,23 +206,25 @@ def main() -> int:
     print(f"Nodes  : source={expected_shape[0]} target={expected_shape[1]}")
     print(f"GT     : entities={len(gt_entities)}")
     print(f"Adapter: fixed top_k={args.top_k}; no GT target-size oracle")
+    print(f"M2MAlign params: {m2m_align_kwargs(args)}")
 
     records: List[Dict[str, Any]] = []
     matrices: List[Dict[str, Any]] = []
+    m2m_kwargs = m2m_align_kwargs(args)
 
     _, s_joena, time_joena = run_joena(dataset, args.use_attr, args.joena_epochs)
     assert_score_matrix("JOENA", s_joena, dataset)
     matrices.append(matrix_stats("JOENA S0", s_joena))
     records.append(evaluate_scores("JOENA", time_joena, s_joena, dataset, gt_entities, args.top_k))
 
-    _, s_m2m_default, time_m2m_default = run_m2m_align(dataset, args.use_attr, init_s=None)
+    _, s_m2m_default, time_m2m_default = run_m2m_align(dataset, args.use_attr, m2m_kwargs, init_s=None)
     assert_score_matrix("M2MAlign default", s_m2m_default, dataset)
     matrices.append(matrix_stats("M2MAlign default S", s_m2m_default))
     records.append(evaluate_scores("M2MAlign default", time_m2m_default, s_m2m_default, dataset, gt_entities, args.top_k))
 
     if tuple(s_joena.shape) != expected_shape:
         raise AssertionError(f"JOENA init_S shape {tuple(s_joena.shape)} != expected {expected_shape}")
-    _, s_refined, time_refined = run_m2m_align(dataset, args.use_attr, init_s=s_joena)
+    _, s_refined, time_refined = run_m2m_align(dataset, args.use_attr, m2m_kwargs, init_s=s_joena)
     assert_score_matrix("JOENA -> M2MAlign", s_refined, dataset)
     matrices.append(matrix_stats("JOENA -> M2MAlign S", s_refined))
     records.append(evaluate_scores("JOENA -> M2MAlign", time_refined, s_refined, dataset, gt_entities, args.top_k))
