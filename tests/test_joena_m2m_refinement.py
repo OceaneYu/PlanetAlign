@@ -3,7 +3,7 @@ import unittest
 import torch
 from torch_geometric.data import Data
 
-from PlanetAlign.algorithms import M2MAlign
+from PlanetAlign.algorithms import JOENAM2MAlign, M2MAlign
 from PlanetAlign.data import BaseData
 
 
@@ -56,6 +56,31 @@ class JOENAM2MRefinementTest(unittest.TestCase):
                 verbose=False,
                 init_S=torch.zeros(3, 4),
             )
+
+    def test_joena_m2m_align_wrapper_trains_and_keeps_base_s(self):
+        dataset = _tiny_dataset()
+        model = JOENAM2MAlign(
+            joena_hid_dim=8,
+            joena_out_dim=8,
+            m2m_alpha=0.9,
+            m2m_tau=0.0,
+            m2m_n_iter=1,
+        ).to("cpu")
+
+        s, _ = model.train(
+            dataset,
+            gids=[0, 1],
+            use_attr=False,
+            total_epochs=1,
+            save_log=False,
+            verbose=False,
+        )
+
+        self.assertEqual(tuple(s.shape), (4, 4))
+        self.assertEqual(tuple(model.base_S.shape), (4, 4))
+        self.assertTrue(torch.isfinite(s).all())
+        self.assertIn("joena_time_s", model.timing_)
+        self.assertIn("m2m_refine_time_s", model.timing_)
 
 
 if __name__ == "__main__":

@@ -200,6 +200,11 @@ def _algo_configs(profile: str) -> Dict[str, Dict[str, Any]]:
                 "train_kwargs": _quick({"use_attr": True, "total_epochs": 10}),
                 "mode": "self.S",
             },
+            "JOENAM2MAlign": {
+                "factory": lambda: PlanetAlign.algorithms.JOENAM2MAlign(m2m_alpha=0.9),
+                "train_kwargs": _quick({"use_attr": True, "total_epochs": 10}),
+                "mode": "self.S",
+            },
             "M2MAlign": {
                 "factory": lambda: PlanetAlign.algorithms.M2MAlign(),
                 "train_kwargs": _quick({"use_attr": True}),
@@ -301,6 +306,11 @@ def _algo_configs(profile: str) -> Dict[str, Dict[str, Any]]:
             },
             "JOENA": {
                 "factory": lambda: PlanetAlign.algorithms.JOENA(alpha=0.7),
+                "train_kwargs": _full({"use_attr": True, "total_epochs": 50}),
+                "mode": "self.S",
+            },
+            "JOENAM2MAlign": {
+                "factory": lambda: PlanetAlign.algorithms.JOENAM2MAlign(m2m_alpha=0.9),
                 "train_kwargs": _full({"use_attr": True, "total_epochs": 50}),
                 "mode": "self.S",
             },
