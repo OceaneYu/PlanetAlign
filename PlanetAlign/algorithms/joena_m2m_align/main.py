@@ -36,6 +36,7 @@ class JOENAM2MAlign(BaseModel):
         m2m_max_group_size: int = 4,
         m2m_n_iter: int = 2,
         m2m_smooth_source: bool = False,
+        preserve_base_topk: int = 10,
         dtype: torch.dtype = torch.float32,
     ):
         super().__init__(dtype=dtype)
@@ -62,7 +63,12 @@ class JOENAM2MAlign(BaseModel):
         self.joena_: JOENA | None = None
         self.refiner_: M2MAlign | None = None
         self.base_S: torch.Tensor | None = None
+        self.refined_raw_S: torch.Tensor | None = None
         self.timing_: Dict[str, float] = {}
+        if preserve_base_topk < 0:
+            raise ValueError("preserve_base_topk must be non-negative")
+        self.preserve_base_topk = int(preserve_base_topk)
+        self.preserved_rows_: int = 0
 
     def train(
         self,
@@ -117,6 +123,10 @@ class JOENAM2MAlign(BaseModel):
         if not torch.isfinite(refined_s).all():
             raise FloatingPointError("refined S contains NaN or Inf")
 
+        self.refined_raw_S = refined_s
+        if self.preserve_base_topk:
+            refined_s = self._preserve_base_topk(base_s, refined_s, self.preserve_base_topk)
+
         self.S = refined_s
         self.timing_ = {
             "joena_time_s": float(joena_time),
@@ -124,3 +134,25 @@ class JOENAM2MAlign(BaseModel):
             "total_time_s": float(joena_time + refine_time),
         }
         return self.S, logger
+
+    def _preserve_base_topk(self, base_s: torch.Tensor, refined_s: torch.Tensor, k: int) -> torch.Tensor:
+        if k < 1:
+            self.preserved_rows_ = 0
+            return refined_s
+        k = min(int(k), base_s.shape[1])
+        base_topk = torch.topk(base_s, k=k, dim=1).indices
+        refined_topk = torch.topk(refined_s, k=k, dim=1).indices
+        changed = torch.tensor(
+            [
+                set(base_topk[row].tolist()) != set(refined_topk[row].tolist())
+                for row in range(base_s.shape[0])
+            ],
+            dtype=torch.bool,
+            device=refined_s.device,
+        )
+        self.preserved_rows_ = int(changed.sum().item())
+        if not changed.any():
+            return refined_s
+        safe_s = refined_s.clone()
+        safe_s[changed] = base_s[changed]
+        return safe_s

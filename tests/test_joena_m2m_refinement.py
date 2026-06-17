@@ -78,9 +78,27 @@ class JOENAM2MRefinementTest(unittest.TestCase):
 
         self.assertEqual(tuple(s.shape), (4, 4))
         self.assertEqual(tuple(model.base_S.shape), (4, 4))
+        self.assertEqual(tuple(model.refined_raw_S.shape), (4, 4))
         self.assertTrue(torch.isfinite(s).all())
         self.assertIn("joena_time_s", model.timing_)
         self.assertIn("m2m_refine_time_s", model.timing_)
+
+    def test_wrapper_preserves_base_topk_when_enabled(self):
+        model = JOENAM2MAlign()
+        base = torch.tensor([[0.9, 0.8, 0.1], [0.2, 0.8, 0.7]])
+        refined = torch.tensor([[0.95, 0.1, 0.85], [0.3, 0.75, 0.7]])
+
+        safe = model._preserve_base_topk(base, refined, k=2)
+
+        self.assertEqual(set(torch.topk(safe[0], k=2).indices.tolist()), set(torch.topk(base[0], k=2).indices.tolist()))
+        self.assertEqual(set(torch.topk(safe[1], k=2).indices.tolist()), set(torch.topk(refined[1], k=2).indices.tolist()))
+        self.assertEqual(model.preserved_rows_, 1)
+        self.assertTrue(torch.allclose(safe[0], base[0]))
+        self.assertTrue(torch.allclose(safe[1], refined[1]))
+
+    def test_invalid_preserve_base_topk_raises(self):
+        with self.assertRaises(ValueError):
+            JOENAM2MAlign(preserve_base_topk=-1)
 
 
 if __name__ == "__main__":
