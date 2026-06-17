@@ -36,7 +36,8 @@ class JOENAM2MAlign(BaseModel):
         m2m_max_group_size: int = 4,
         m2m_n_iter: int = 2,
         m2m_smooth_source: bool = False,
-        preserve_base_topk: int = 10,
+        preserve_base_topk: Union[int, str] = "auto",
+        auto_topk_mass_threshold: float = 0.90,
         dtype: torch.dtype = torch.float32,
     ):
         super().__init__(dtype=dtype)
@@ -65,9 +66,19 @@ class JOENAM2MAlign(BaseModel):
         self.base_S: torch.Tensor | None = None
         self.refined_raw_S: torch.Tensor | None = None
         self.timing_: Dict[str, float] = {}
-        if preserve_base_topk < 0:
-            raise ValueError("preserve_base_topk must be non-negative")
-        self.preserve_base_topk = int(preserve_base_topk)
+        if isinstance(preserve_base_topk, str):
+            if preserve_base_topk != "auto":
+                raise ValueError("preserve_base_topk must be a non-negative integer or 'auto'")
+            self.preserve_base_topk: Union[int, str] = preserve_base_topk
+        else:
+            if preserve_base_topk < 0:
+                raise ValueError("preserve_base_topk must be non-negative")
+            self.preserve_base_topk = int(preserve_base_topk)
+        if not 0.0 <= auto_topk_mass_threshold <= 1.0:
+            raise ValueError("auto_topk_mass_threshold must be in [0, 1]")
+        self.auto_topk_mass_threshold = float(auto_topk_mass_threshold)
+        self.base_confidence_: Dict[str, float] = {}
+        self.selected_preserve_base_topk_: int = 0
         self.preserved_rows_: int = 0
 
     def train(
@@ -124,8 +135,10 @@ class JOENAM2MAlign(BaseModel):
             raise FloatingPointError("refined S contains NaN or Inf")
 
         self.refined_raw_S = refined_s
-        if self.preserve_base_topk:
-            refined_s = self._preserve_base_topk(base_s, refined_s, self.preserve_base_topk)
+        selected_topk = self._select_preserve_base_topk(base_s)
+        self.selected_preserve_base_topk_ = selected_topk
+        if selected_topk:
+            refined_s = self._preserve_base_topk(base_s, refined_s, selected_topk)
 
         self.S = refined_s
         self.timing_ = {
@@ -134,6 +147,33 @@ class JOENAM2MAlign(BaseModel):
             "total_time_s": float(joena_time + refine_time),
         }
         return self.S, logger
+
+    def _select_preserve_base_topk(self, base_s: torch.Tensor) -> int:
+        if isinstance(self.preserve_base_topk, int):
+            return self.preserve_base_topk
+
+        k = min(10, int(base_s.shape[1]))
+        stats = self._base_confidence_stats(base_s, k=k)
+        self.base_confidence_ = stats
+        if stats["topk_mass"] >= self.auto_topk_mass_threshold:
+            return k
+        return 1
+
+    def _base_confidence_stats(self, base_s: torch.Tensor, k: int = 10) -> Dict[str, float]:
+        if k < 1:
+            raise ValueError("k must be positive")
+        k = min(int(k), int(base_s.shape[1]))
+        scores = base_s.detach().to(torch.float32).cpu().clamp_min(0.0)
+        row_sum = scores.sum(dim=1, keepdim=True).clamp_min(1e-12)
+        probs = scores / row_sum
+        topk_values = torch.topk(probs, k=k, dim=1).values
+        entropy = -(probs.clamp_min(1e-12) * torch.log(probs.clamp_min(1e-12))).sum(dim=1)
+        return {
+            "topk": float(k),
+            "topk_mass": float(topk_values.sum(dim=1).mean().item()),
+            "top1_mass": float(topk_values[:, 0].mean().item()),
+            "entropy": float(entropy.mean().item()),
+        }
 
     def _preserve_base_topk(self, base_s: torch.Tensor, refined_s: torch.Tensor, k: int) -> torch.Tensor:
         if k < 1:

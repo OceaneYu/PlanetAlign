@@ -79,6 +79,10 @@ CSV_FIELDS = [
     "MicroF1",
     "M2M-SGS",
     "M2M-EGS",
+    "selected_preserve_base_topk",
+    "preserved_rows",
+    "base_topk_mass",
+    "base_entropy",
     "TGAE-local-ACS",
     "TGAE-local-MSF1",
     "TGAE-local-MicroF1",
@@ -484,6 +488,14 @@ def evaluate_algorithm(
                 **m2m,
             }
         )
+        if hasattr(algo, "selected_preserve_base_topk_"):
+            record["selected_preserve_base_topk"] = getattr(algo, "selected_preserve_base_topk_")
+        if hasattr(algo, "preserved_rows_"):
+            record["preserved_rows"] = getattr(algo, "preserved_rows_")
+        base_confidence = getattr(algo, "base_confidence_", None)
+        if base_confidence:
+            record["base_topk_mass"] = base_confidence.get("topk_mass")
+            record["base_entropy"] = base_confidence.get("entropy")
 
         if algo_name == "TGAE":
             local_pred = algo.predict_many_to_many(
