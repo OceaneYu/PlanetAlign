@@ -3,8 +3,7 @@
 This is the algorithm motivated by two negative results and one positive signal:
 
 - A group-cohesion *embedding* regularizer on JOENA is a no-op: with attributes
-  the encoder already collapses group members, and the bottleneck is the readout
-  (see ``PlanetAlign.algorithms.joena_group``).
+  the encoder already collapses group members, and the bottleneck is the readout.
 - *Attribute/embedding* clustering for group discovery over-merges on weak-
   attribute graphs (e.g. airport, attr_dim=4): unrelated same-attribute nodes
   get chained into giant blobs, and the base rate of within- vs cross-group

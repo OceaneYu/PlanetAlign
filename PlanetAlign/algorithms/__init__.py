@@ -14,7 +14,6 @@ from .wlalign import WLAlign
 from .walign import WAlign
 from .hot import HOT
 from .joena import JOENA
-from .joena_group import JOENAGroup
 from .joena_group_decode import JOENAGroupDecode
 from .dualmatch import DualMatch
 from .meaformer import MEAformer
@@ -36,7 +35,6 @@ __all__ = [
     'WAlign',
     'HOT',
     'JOENA',
-    'JOENAGroup',
     'JOENAGroupDecode',
     'DualMatch',
     'MEAformer',
