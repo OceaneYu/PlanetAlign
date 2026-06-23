@@ -88,14 +88,16 @@ class MarginalRankingLoss(torch.nn.Module):
 
         A = self.rowwise_cos_dist(anchor_embeddings_1, anchor_embeddings_2)
         D = A + self.margin
+
+        # 计算负样本的损失
         B1 = -self.rowwise_cos_dist(
             anchor_embeddings_1.unsqueeze(1).repeat(1, self.k, 1).view(-1, anchor_embeddings_1.shape[-1]),
             neg_embeddings_1.view(-1, neg_embeddings_1.shape[-1]))
-        L1 = torch.sum(F.relu(D.unsqueeze(-1) + B1.view(-1, self.k)))
+        L1 = torch.sum(F.relu(D.unsqueeze(-1) + B1.view(-1, self.k))) # 图1锚节点和负样本的排序损失
         B2 = -self.rowwise_cos_dist(
             anchor_embeddings_2.unsqueeze(1).repeat(1, self.k, 1).view(-1, anchor_embeddings_2.shape[-1]),
             neg_embeddings_2.view(-1, neg_embeddings_2.shape[-1]))
-        L2 = torch.sum(F.relu(D.unsqueeze(-1) + B2.view(-1, self.k)))
+        L2 = torch.sum(F.relu(D.unsqueeze(-1) + B2.view(-1, self.k))) # 图2锚节点和负样本的排序损失
 
         return (L1 + L2) / (anchor1.shape[0] * self.k)
 

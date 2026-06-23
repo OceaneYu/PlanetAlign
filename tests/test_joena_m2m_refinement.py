@@ -3,7 +3,7 @@ import unittest
 import torch
 from torch_geometric.data import Data
 
-from PlanetAlign.algorithms import JOENAM2MAlign, M2MAlign
+from PlanetAlign.algorithms import M2MAlign
 from PlanetAlign.data import BaseData
 
 
@@ -56,75 +56,6 @@ class JOENAM2MRefinementTest(unittest.TestCase):
                 verbose=False,
                 init_S=torch.zeros(3, 4),
             )
-
-    def test_joena_m2m_align_wrapper_trains_and_keeps_base_s(self):
-        dataset = _tiny_dataset()
-        model = JOENAM2MAlign(
-            joena_hid_dim=8,
-            joena_out_dim=8,
-            m2m_alpha=0.9,
-            m2m_tau=0.0,
-            m2m_n_iter=1,
-        ).to("cpu")
-
-        s, _ = model.train(
-            dataset,
-            gids=[0, 1],
-            use_attr=False,
-            total_epochs=1,
-            save_log=False,
-            verbose=False,
-        )
-
-        self.assertEqual(tuple(s.shape), (4, 4))
-        self.assertEqual(tuple(model.base_S.shape), (4, 4))
-        self.assertEqual(tuple(model.refined_raw_S.shape), (4, 4))
-        self.assertTrue(torch.isfinite(s).all())
-        self.assertIn("joena_time_s", model.timing_)
-        self.assertIn("m2m_refine_time_s", model.timing_)
-
-    def test_wrapper_preserves_base_topk_when_enabled(self):
-        model = JOENAM2MAlign()
-        base = torch.tensor([[0.9, 0.8, 0.1], [0.2, 0.8, 0.7]])
-        refined = torch.tensor([[0.95, 0.1, 0.85], [0.3, 0.75, 0.7]])
-
-        safe = model._preserve_base_topk(base, refined, k=2)
-
-        self.assertEqual(set(torch.topk(safe[0], k=2).indices.tolist()), set(torch.topk(base[0], k=2).indices.tolist()))
-        self.assertEqual(set(torch.topk(safe[1], k=2).indices.tolist()), set(torch.topk(refined[1], k=2).indices.tolist()))
-        self.assertEqual(model.preserved_rows_, 1)
-        self.assertTrue(torch.allclose(safe[0], base[0]))
-        self.assertTrue(torch.allclose(safe[1], refined[1]))
-
-    def test_auto_preserve_topk_uses_base_confidence(self):
-        concentrated = torch.tensor(
-            [
-                [0.90, 0.05, 0.03, 0.02],
-                [0.80, 0.10, 0.05, 0.05],
-            ],
-            dtype=torch.float32,
-        )
-        diffuse = torch.full((2, 4), 0.25, dtype=torch.float32)
-
-        model = JOENAM2MAlign(preserve_base_topk="auto", auto_topk_mass_threshold=0.9)
-
-        self.assertEqual(model._select_preserve_base_topk(concentrated), 4)
-        self.assertGreaterEqual(model.base_confidence_["topk_mass"], 0.9)
-        self.assertEqual(model._select_preserve_base_topk(diffuse), 4)
-
-        wider_diffuse = torch.full((2, 20), 0.05, dtype=torch.float32)
-        self.assertEqual(model._select_preserve_base_topk(wider_diffuse), 1)
-        self.assertLess(model.base_confidence_["topk_mass"], 0.9)
-
-    def test_invalid_preserve_base_topk_raises(self):
-        with self.assertRaises(ValueError):
-            JOENAM2MAlign(preserve_base_topk=-1)
-
-        with self.assertRaises(ValueError):
-            JOENAM2MAlign(preserve_base_topk="bad")
-
-        with self.assertRaises(ValueError):
-            JOENAM2MAlign(auto_topk_mass_threshold=1.5)
 
 
 if __name__ == "__main__":

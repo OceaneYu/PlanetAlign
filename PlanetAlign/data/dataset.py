@@ -50,10 +50,10 @@ class BaseData:
         train_size = int(num_anchor * self.train_ratio)
         return self._anchor_links[perm[:train_size]], self._anchor_links[perm[train_size:]]
 
-    def _check_integrity(self, root):
+    def _check_integrity(self, root): # 检查数据集是否完整
         raise NotImplementedError
 
-    def _validate(self):
+    def _validate(self): # 验证数据集是否符合要求
         assert hasattr(self, 'pyg_graphs') and hasattr(self, '_anchor_links'), 'Dataset has not been loaded yet, wrong place for validation'
         assert type(self.pyg_graphs) in [list, tuple], 'Graphs must be stored in a list or tuple'
         assert len(self.pyg_graphs) > 1, 'At least two graphs are required for alignment'

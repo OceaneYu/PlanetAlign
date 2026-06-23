@@ -6,7 +6,7 @@ from torch_geometric.utils import to_undirected, subgraph
 from torch_geometric.data import Data
 
 from PlanetAlign.data import Dataset
-
+# 为了支持实验而添加的工具，删掉节点后的对齐效果，添加一部分节点的对齐效果，删掉边的对齐效果，添加一部分边的对齐效果，翻转属性的对齐效果，添加高斯噪声的对齐效果，以及在监督信息上添加噪声的对齐效果
 
 def perturb_edges(graph: Data,
                   noise_ratio: float,

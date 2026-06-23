@@ -14,12 +14,10 @@ from .wlalign import WLAlign
 from .walign import WAlign
 from .hot import HOT
 from .joena import JOENA
-from .joena_m2m_align import JOENAM2MAlign
 from .dualmatch import DualMatch
 from .meaformer import MEAformer
 from .m2m_align import M2MAlign
 from .tgae import TGAE
-from .group_joena import GroupJOENA, GroupJOENAConfig
 
 __all__ = [
     'IsoRank',
@@ -36,13 +34,10 @@ __all__ = [
     'WAlign',
     'HOT',
     'JOENA',
-    'JOENAM2MAlign',
     'DualMatch',
     'MEAformer',
     'M2MAlign',
-    'TGAE',
-    'GroupJOENA',
-    'GroupJOENAConfig'
+    'TGAE'
 ]
 
 classes = copy.copy(__all__)

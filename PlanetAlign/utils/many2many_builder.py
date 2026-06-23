@@ -412,7 +412,7 @@ def build_many_to_many_benchmark(
     g_src = dataset.pyg_graphs[gids[0]]
     g_tgt = dataset.pyg_graphs[gids[1]]
 
-    if anchor_source == "test":
+    if anchor_source == "test": #只取测试集的锚点对来构建多对多数据集
         anchors = dataset.test_data
     else:
         anchors = torch.cat([dataset.train_data, dataset.test_data], dim=0)

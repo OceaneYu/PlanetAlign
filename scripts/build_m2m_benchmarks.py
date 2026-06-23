@@ -76,6 +76,7 @@ def _dtype_from_name(name: str) -> torch.dtype:
 
 def _find_dataset_file(input_root: Path, item: str) -> Path:
     candidate = Path(item)
+    # 检查是否为绝对路径或相对路径（包含目录），如果是则直接使用，否则在输入根目录下查找匹配的文件
     if candidate.suffix == ".pt" or candidate.parent != Path("."):
         path = candidate if candidate.is_absolute() else input_root / candidate
         if path.exists():
@@ -307,3 +308,11 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+"""
+python scripts/build_m2m_benchmarks.py \
+  --input-root data \
+  --output-root data/m2m_no_overlap \
+  --overlap-ratio 0 \ 0.05(考虑第四种情况)
+  --keep-going
+"""
