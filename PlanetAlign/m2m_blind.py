@@ -90,18 +90,8 @@ def _cohesion_pairs(
     return pairs
 
 
-def discover_groups(
-    graph,
-    use_attr: bool = True,
-    attr_tau: float = 0.99,
-    struct_tau: float = 0.5,
-) -> List[List[int]]:
-    """Partition a graph's nodes into groups via union-find over cohesion edges.
-
-    Every node belongs to exactly one returned group; nodes with no cohesion
-    edge form singleton groups.
-    """
-    num_nodes = int(graph.num_nodes)
+def _components(num_nodes: int, pairs: Iterable[Tuple[int, int]]) -> List[List[int]]:
+    """Union-find connected components; isolated nodes become singletons."""
     parent = list(range(num_nodes))
 
     def find(x: int) -> int:
@@ -110,7 +100,7 @@ def discover_groups(
             x = parent[x]
         return x
 
-    for u, v in _cohesion_pairs(graph, use_attr, attr_tau, struct_tau):
+    for u, v in pairs:
         ru, rv = find(int(u)), find(int(v))
         if ru != rv:
             parent[ru] = rv
@@ -119,6 +109,57 @@ def discover_groups(
     for n in range(num_nodes):
         groups.setdefault(find(n), []).append(n)
     return list(groups.values())
+
+
+def discover_groups(
+    graph,
+    use_attr: bool = True,
+    attr_tau: float = 0.99,
+    struct_tau: float = 0.5,
+) -> List[List[int]]:
+    """Partition a graph's nodes into groups via union-find over cohesion edges.
+
+    Cohesion edges come from observable structure/attributes only. Every node
+    belongs to exactly one returned group; nodes with no cohesion edge form
+    singleton groups.
+
+    Note: attribute equality over-merges on low-dimensional attributes (it
+    chains unrelated same-attribute nodes). For weak-attribute graphs prefer
+    :func:`discover_groups_by_profile`, which uses the cross-graph alignment.
+    """
+    return _components(int(graph.num_nodes), _cohesion_pairs(graph, use_attr, attr_tau, struct_tau))
+
+
+def discover_groups_by_profile(
+    profiles: torch.Tensor,
+    graph,
+    tau: float = 0.1,
+) -> List[List[int]]:
+    """Partition nodes into groups via their cross-graph alignment profiles.
+
+    ``profiles`` is a ``[num_nodes, d]`` tensor of per-node alignment vectors —
+    rows of the similarity matrix for the source side, columns (i.e. rows of
+    ``S.T``) for the target side. Two adjacent nodes are merged when the cosine
+    of their (L2-normalized) profiles is ``>= tau``.
+
+    Group-mates map to the same region of the other graph, so their profiles
+    are near-identical, while non-group-mates — even attribute-identical,
+    adjacent ones — map elsewhere and have near-orthogonal profiles. This makes
+    grouping robust on weak-attribute graphs where attribute/structure signals
+    over-merge.
+    """
+    ei = graph.edge_index
+    if ei.numel() == 0:
+        return _components(int(graph.num_nodes), [])
+    src, dst = ei[0], ei[1]
+    keep = src < dst
+    src, dst = src[keep], dst[keep]
+
+    p = F.normalize(profiles.to(torch.float32), p=2, dim=1)
+    sim = (p[src] * p[dst]).sum(dim=1)
+    mask = sim >= tau
+    pairs = list(zip(src[mask].tolist(), dst[mask].tolist()))
+    return _components(int(graph.num_nodes), pairs)
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +287,7 @@ def evaluate_blind(
 
 __all__ = [
     "discover_groups",
+    "discover_groups_by_profile",
     "decode_entity_map",
     "blind_predict",
     "evaluate_blind",

@@ -129,6 +129,8 @@ class JOENAGroup(BaseModel):
         # Populated by train().
         self.plan_S: Optional[torch.Tensor] = None
         self.embed_S: Optional[torch.Tensor] = None
+        self.emb1: Optional[torch.Tensor] = None
+        self.emb2: Optional[torch.Tensor] = None
         self.num_cohesion_edges: Tuple[int, int] = (0, 0)
 
     # ------------------------------------------------------------------
@@ -222,6 +224,8 @@ class JOENAGroup(BaseModel):
             out1, out2 = model(input_emb1, input_emb2)
             self.plan_S = S.detach().to(self.dtype).cpu()
             self.embed_S = (out1 @ out2.T).detach().to(self.dtype).cpu()
+            self.emb1 = out1.detach().to(self.dtype).cpu()
+            self.emb2 = out2.detach().to(self.dtype).cpu()
 
         self.S = self._select_output().to(self.device)
         return self.S, logger
