@@ -1,6 +1,14 @@
-"""JOENAGroupDecode — many-to-many alignment by decoding groups from JOENA.
+"""Many-to-many decoding on top of a node-level aligner.
 
-This is the algorithm motivated by two negative results and one positive signal:
+This module holds compositions of *model + decoder*: an alignment model (e.g.
+:class:`PlanetAlign.algorithms.JOENA`) that produces a node-level similarity
+matrix ``S``, followed by the blind group-decoding in
+:mod:`PlanetAlign.m2m_blind`. These are deliberately **not** in
+:mod:`PlanetAlign.algorithms`, which is reserved for standalone alignment
+algorithms — ``JOENAGroupDecode`` adds no new representation learning, it only
+reuses JOENA's ``S`` and decodes groups from it.
+
+The decoding rationale (validated empirically):
 
 - A group-cohesion *embedding* regularizer on JOENA is a no-op: with attributes
   the encoder already collapses group members, and the bottleneck is the readout.
@@ -13,7 +21,7 @@ This is the algorithm motivated by two negative results and one positive signal:
   matrix ``S`` are near-identical (cosine ~0.4 within-group) while non-group-
   mates — even attribute-identical, adjacent ones — map elsewhere (cosine ~0.0).
 
-So this method discovers groups from ``S`` itself, not from attributes:
+So the decoder discovers groups from ``S`` itself, not from attributes:
 
 1. Run JOENA to obtain a node-level similarity matrix ``S`` (n1 x n2).
 2. Discover source groups by union-find over *adjacent* node pairs whose S-row
@@ -22,7 +30,7 @@ So this method discovers groups from ``S`` itself, not from attributes:
 3. Match each source group to its best target group by pooled similarity to
    produce a many-to-many entity map.
 
-The prediction path never consults the ground-truth entity map, so the method is
+The prediction path never consults the ground-truth entity map, so this is
 designed for the blind protocol in :mod:`PlanetAlign.m2m_blind` rather than the
 group/size-leaking adapter in :mod:`PlanetAlign.m2m`.
 """

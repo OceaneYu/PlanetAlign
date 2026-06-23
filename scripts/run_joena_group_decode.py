@@ -33,7 +33,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "planeta
 
 import torch
 
-from PlanetAlign.algorithms import JOENAGroupDecode
+from PlanetAlign.m2m_decode import JOENAGroupDecode
 from PlanetAlign.data import Dataset
 from PlanetAlign.metrics import hits_ks_scores
 from PlanetAlign.m2m import evaluate_similarity

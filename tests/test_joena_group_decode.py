@@ -3,7 +3,7 @@ import unittest
 import torch
 from torch_geometric.data import Data
 
-from PlanetAlign.algorithms import JOENAGroupDecode
+from PlanetAlign.m2m_decode import JOENAGroupDecode
 from PlanetAlign.data import BaseData
 
 
