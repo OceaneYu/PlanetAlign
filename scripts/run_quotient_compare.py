@@ -35,7 +35,7 @@ import torch
 from PlanetAlign.algorithms import JOENA
 from PlanetAlign.data import Dataset
 from PlanetAlign.m2m_blind import evaluate_blind, discover_groups_by_profile, decode_entity_map
-from PlanetAlign.m2m import align_prediction_to_ground_truth
+from PlanetAlign.m2m import align_prediction_to_ground_truth, use_full_anchor_supervision
 from PlanetAlign.m2m_quotient import evaluate_quotient_blind
 from PlanetAlign.metrics import many_to_many_scores
 from PlanetAlign.utils import get_anchor_pairs
@@ -70,10 +70,16 @@ def main() -> int:
     p.add_argument("--pc-temp", type=float, default=0.1)
     p.add_argument("--pc-group-marginals", action="store_true")
     p.add_argument("--pc-marginal-rho", type=float, default=0.5)
+    p.add_argument("--no-full-anchors", action="store_true",
+                   help="reproduce the old double-split protocol (~4%% supervision)")
     args = p.parse_args()
 
     torch.manual_seed(args.seed)
     ds = Dataset(root=args.root, name=args.dataset, train_ratio=args.train_ratio, seed=args.seed)
+    if not args.no_full_anchors:
+        # M2M anchor_links already IS the original 20% train split; entity GT is
+        # built from the original test split (disjoint, verified all datasets).
+        use_full_anchor_supervision(ds)
     gt = json.load(open(args.root / f"{args.dataset}_gt_many2many.json"))["entities"]
     g_src, g_tgt = ds.pyg_graphs[GIDS[0]], ds.pyg_graphs[GIDS[1]]
     use_attr = all(g.x is not None for g in (g_src, g_tgt))
@@ -90,7 +96,8 @@ def main() -> int:
             tag = (f"_pc-u{args.pc_lambda_unif}-a{args.pc_lambda_align}"
                    f"-t{args.pc_temp}{'-nosym' if args.pc_no_break_symmetry else ''}"
                    f"{f'-gm{args.pc_marginal_rho}' if use_gm else ''}")
-        cache = Path("logs/m2m_diag/S_cache") / f"{args.dataset}{tag}_e{args.epochs}_s{args.seed}.pt"
+        fa = "" if args.no_full_anchors else "_fa"
+        cache = Path("logs/m2m_diag/S_cache") / f"{args.dataset}{tag}_e{args.epochs}_s{args.seed}{fa}.pt"
         if cache.exists():
             s_ = torch.load(cache, map_location="cpu", weights_only=True)
             print(f"[{model_name}] loaded cached S {list(s_.shape)}")
@@ -159,9 +166,12 @@ def main() -> int:
     else:
         S = get_S(args.model)
 
+    diag_pairs = get_anchor_pairs(ds.test_data if ds.test_data.numel() else ds.train_data,
+                                  GIDS[0], GIDS[1])
     hits1 = float(__import__('PlanetAlign').metrics.hits_ks_scores(
-        S, get_anchor_pairs(ds.test_data, GIDS[0], GIDS[1]), ks=[1], mode="mean").get(1, 0.0))
-    print(f"Hits@1={hits1:.4f}")
+        S, diag_pairs, ks=[1], mode="mean").get(1, 0.0))
+    tag_h = "in-sample " if not ds.test_data.numel() else ""
+    print(f"{tag_h}Hits@1={hits1:.4f}")
     anchors = get_anchor_pairs(ds.train_data, GIDS[0], GIDS[1])
     print(f"train_anchors={anchors.shape[0]}")
 

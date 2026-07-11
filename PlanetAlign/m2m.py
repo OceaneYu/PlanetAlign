@@ -43,6 +43,27 @@ from PlanetAlign.metrics import many_to_many_scores, similarity_to_pred_entities
 
 
 EntityMap = Dict[str, Dict[str, List[int]]]
+
+
+def use_full_anchor_supervision(dataset) -> None:
+    """Give a generated M2M dataset its intended training supervision.
+
+    The M2M builder stores the *original* train split (the paper's 20%
+    protocol) in ``anchor_links`` and builds the entity ground truth from the
+    original test split — supervision and evaluation are disjoint by
+    construction (verified: anchor nodes never appear in GT entities, all 9
+    datasets). Loading such a dataset through ``Dataset(train_ratio=0.2)``
+    therefore *double-splits* the supervision down to ~4% of the original
+    anchors, which starves structure-reliant graphs (arenas/phone-email/italy
+    collapse to Hits@1 ~ 0 while their originals reach 0.98/0.35/0.10).
+
+    Call this right after constructing the Dataset: all of ``anchor_links``
+    becomes ``train_data`` and ``test_data`` is emptied (node-level Hits has no
+    held-out pairs under this protocol; the benchmark's evaluation is the
+    blind entity map).
+    """
+    dataset.train_data = dataset._anchor_links.clone()
+    dataset.test_data = dataset._anchor_links[:0]
 DEFAULT_ENTITY_SIDES = ("src", "tgt")
 
 
