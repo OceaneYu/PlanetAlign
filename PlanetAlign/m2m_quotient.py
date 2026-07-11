@@ -136,12 +136,131 @@ def pool_columns(S: torch.Tensor, groups: Sequence[Sequence[int]]) -> torch.Tens
     return pooled / size.unsqueeze(0)
 
 
+def _pool_columns_reduce(S: torch.Tensor, groups: Sequence[Sequence[int]],
+                         reduce: str) -> torch.Tensor:
+    """Column pooling by group with ``sum`` / ``mean`` / ``amax`` reduction."""
+    n_rows, n_cols = S.shape
+    labels = torch.zeros(n_cols, dtype=torch.long)
+    for gid, members in enumerate(groups):
+        for node in members:
+            labels[node] = gid
+    g = len(groups)
+    if reduce == "amax":
+        pooled = torch.full((n_rows, g), float("-inf"), dtype=S.dtype)
+        pooled = pooled.index_reduce_(1, labels, S, "amax", include_self=True)
+        return pooled
+    pooled = torch.zeros(n_rows, g, dtype=S.dtype)
+    pooled.index_add_(1, labels, S)
+    if reduce == "mean":
+        size = torch.zeros(g).index_add_(0, labels, torch.ones(n_cols)).clamp(min=1.0)
+        pooled = pooled / size.unsqueeze(0)
+    return pooled
+
+
 def quotient_scores(S: torch.Tensor,
                     src_groups: Sequence[Sequence[int]],
-                    tgt_groups: Sequence[Sequence[int]]) -> torch.Tensor:
-    """Mean pooled similarity between every (source group, target group) pair."""
-    R = pool_columns(S, tgt_groups)              # [n1, g2]
-    return pool_columns(R.T.contiguous(), src_groups).T.contiguous()  # [g1, g2]
+                    tgt_groups: Sequence[Sequence[int]],
+                    mode: str = "mean") -> torch.Tensor:
+    """Group-to-group scores for every (source group, target group) pair.
+
+    Modes (all vectorized, no per-block loops):
+
+    - ``mean``: mean of the S block — the original readout. Dilutes 1-to-many
+      blocks (a correct k x m block averages mass/(km)).
+    - ``coverage``: bidirectional containment, scale-free in [0, 1]. For pair
+      (A, B): covA = mean over i in A of (mass of S[i, B] / mass of S[i, :]),
+      covB symmetric over columns; score = sqrt(covA * covB). Measures "A's
+      mass lands in B AND B's mass comes from A", the entity semantics.
+
+    Measured (18 dataset-seed cells, paired on identical S): coverage beats
+    mean on balanced-marginal data (cora +0.0016 x4 seeds, pems08 +0.003..
+    +0.025, ppi +0.004..0.008) and loses consistently on unbalanced Douban
+    (-0.007..-0.015, row/col-mass normalization distorts when column
+    capacities differ ~3x). Default stays ``mean``; ``coverage`` is the
+    documented option for balanced regimes. max/sum/hybrid variants were
+    measured with no net value and removed.
+    """
+    if mode == "mean":
+        R = pool_columns(S, tgt_groups)              # [n1, g2]
+        return pool_columns(R.T.contiguous(), src_groups).T.contiguous()
+    if mode == "coverage":
+        eps = 1e-12
+        Rsum = _pool_columns_reduce(S, tgt_groups, "sum")                  # [n1, g2]
+        cov_rows = Rsum / S.sum(dim=1, keepdim=True).clamp(min=eps)
+        covA = _pool_columns_reduce(cov_rows.T.contiguous(), src_groups, "mean").T.contiguous()
+        Csum = _pool_columns_reduce(S.T.contiguous(), src_groups, "sum")   # [n2, g1]
+        cov_cols = Csum / S.sum(dim=0, keepdim=True).clamp(min=eps).T
+        covB = _pool_columns_reduce(cov_cols.T.contiguous(), tgt_groups, "mean")  # [g1, g2]
+        return torch.sqrt(covA.clamp(min=0) * covB.clamp(min=0))
+    raise ValueError(f"unknown score mode: {mode}")
+
+
+def quotient_adjacency(graph, groups: Sequence[Sequence[int]]) -> torch.Tensor:
+    """Row-normalized quotient-graph adjacency (with self-loops): [g, g]."""
+    g = len(groups)
+    labels = _group_labels(groups, int(graph.num_nodes))
+    A = torch.eye(g)
+    ei = graph.edge_index
+    if ei.numel():
+        a, b = labels[ei[0]], labels[ei[1]]
+        keep = a != b
+        A[a[keep], b[keep]] = 1.0
+        A[b[keep], a[keep]] = 1.0
+    return A / A.sum(dim=1, keepdim=True).clamp(min=1.0)
+
+
+def neighbor_consistency_refine(T: torch.Tensor,
+                                Aq1: torch.Tensor,
+                                Aq2: torch.Tensor,
+                                beta: float,
+                                iters: int = 1) -> torch.Tensor:
+    """Group-level alignment-consistency smoothing of the score matrix.
+
+    The consistency principle ("neighbors of matches should match") is wrong at
+    node level under M2M but *correct at the quotient level*: if group A
+    matches group B, A's neighbor groups should match B's neighbor groups.
+    One propagation step: T <- (1-beta) * T + beta * Aq1 @ T @ Aq2^T, on a
+    min-max normalized T.
+    """
+    if beta <= 0:
+        return T
+    lo, hi = float(T.min()), float(T.max())
+    Tn = (T - lo) / (hi - lo) if hi > lo else T
+    for _ in range(iters):
+        Tn = (1 - beta) * Tn + beta * (Aq1 @ Tn @ Aq2.T)
+    return Tn
+
+
+def evict_outliers(groups: List[List[int]],
+                   profiles: torch.Tensor,
+                   tau: float) -> List[List[int]]:
+    """Merge-split refinement: evict members that disagree with their group.
+
+    Merging is greedy and irreversible; this one-pass correction removes any
+    member whose profile cosine to its group's leave-self-out centroid falls
+    below ``tau`` (the same threshold that justified the merges). Evicted
+    nodes become singletons.
+    """
+    p = F.normalize(profiles.to(torch.float32), p=2, dim=1)
+    out: List[List[int]] = []
+    for members in groups:
+        if len(members) < 2:
+            out.append(list(members))
+            continue
+        idx = torch.tensor(members, dtype=torch.long)
+        total = p[idx].sum(dim=0)
+        keep, evicted = [], []
+        for node in members:
+            rest = total - p[node]
+            denom = float(rest.norm())
+            cos = float(p[node] @ rest) / denom if denom > 0 else 0.0
+            (keep if cos >= tau else evicted).append(node)
+        if len(keep) >= 2:
+            out.append(keep)
+            out.extend([e] for e in evicted)
+        else:
+            out.append(list(members))     # group would dissolve; keep as-is
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -588,6 +707,9 @@ def quotient_decode(S: torch.Tensor,
                     global_candidate: Optional[bool] = None,
                     anchors: Optional[torch.Tensor] = None,
                     overlap_expand_tau: Optional[float] = None,
+                    score_mode: str = "mean",
+                    neighbor_beta: float = 0.0,
+                    evict: bool = True,
                     ) -> Tuple[EntityMap, Dict[str, object]]:
     """Decode a many-to-many entity map from a node-level similarity matrix.
 
@@ -644,6 +766,18 @@ def quotient_decode(S: torch.Tensor,
             profiles_src, profiles_tgt, us, vs, ut, vt)
         allowed_s, allowed_t = ev_s.split("@")[0], ev_t.split("@")[0]
 
+        if evict:
+            # Merge-split refinement: one leave-self-out eviction pass at the
+            # same threshold that justified the merges. Only valid when the
+            # partition's own evidence is the profile (evicting attr-evidence
+            # groups by profile cosine mismatches evidences — measured -0.043
+            # on Cora, whose true members have low profile cosine under the
+            # permutation lock).
+            if allowed_s == "profile":
+                src_groups = evict_outliers(src_groups, profiles_src, tau_s)
+            if allowed_t == "profile":
+                tgt_groups = evict_outliers(tgt_groups, profiles_tgt, tau_t)
+
         info["taus"].append((round(tau_s, 4), round(tau_t, 4)))
         info["group_counts"].append((len(src_groups), len(tgt_groups)))
         info["evidence"].append((ev_s, ev_t))
@@ -659,7 +793,11 @@ def quotient_decode(S: torch.Tensor,
         profiles_src = pool_columns(S, tgt_groups)                    # [n1, g2]
         profiles_tgt = pool_columns(S.T.contiguous(), src_groups)     # [n2, g1]
 
-    T = quotient_scores(S, src_groups, tgt_groups)
+    T = quotient_scores(S, src_groups, tgt_groups, mode=score_mode)
+    if neighbor_beta > 0:
+        T = neighbor_consistency_refine(
+            T, quotient_adjacency(graph_src, src_groups),
+            quotient_adjacency(graph_tgt, tgt_groups), beta=neighbor_beta)
     match = (hungarian_match if matcher == "hungarian" else greedy_match)(
         T, relative_threshold=relative_match_threshold)
 

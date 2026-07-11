@@ -7,12 +7,15 @@ from torch_geometric.data import Data
 
 from PlanetAlign.m2m_blind import discover_groups_by_profile
 from PlanetAlign.m2m_quotient import (
+    evict_outliers,
     global_candidate_pairs,
     greedy_match,
     hungarian_match,
     merge_average_linkage,
+    neighbor_consistency_refine,
     null_threshold,
     otsu_threshold,
+    quotient_adjacency,
     partition_contrast,
     quotient_decode,
     quotient_scores,
@@ -218,3 +221,65 @@ class GroupUniformMarginalTest(unittest.TestCase):
         from PlanetAlign.m2m_contrastive import _group_uniform_marginal
         m = _group_uniform_marginal([[0, 1], [2]], n=3, rho=0.0, dtype=torch.float32)
         self.assertTrue(torch.allclose(m, torch.full((3,), 1 / 3)))
+
+
+class CoverageScoreTest(unittest.TestCase):
+    """Bidirectional coverage: scale-free containment in [0, 1]."""
+
+    def test_correct_block_scores_near_one(self):
+        # Entity: src {0,1} <-> tgt {0,1,2}; all mass inside the block.
+        S = torch.tensor([[0.5, 0.3, 0.2, 0.0],
+                          [0.2, 0.4, 0.4, 0.0],
+                          [0.0, 0.0, 0.0, 1.0]])
+        T = quotient_scores(S, [[0, 1], [2]], [[0, 1, 2], [3]], mode="coverage")
+        self.assertGreater(float(T[0, 0]), 0.99)   # full mutual containment
+        self.assertLess(float(T[0, 1]), 0.01)
+        self.assertGreater(float(T[1, 1]), 0.99)
+        self.assertTrue(bool((T <= 1.0 + 1e-6).all()))
+
+    def test_mean_dilutes_one_to_many_but_coverage_does_not(self):
+        # src {0} -> tgt {0,1,2} spread; a competing singleton tgt {3} with one
+        # concentrated (but partial) edge. Mean prefers the wrong singleton;
+        # coverage prefers the true group.
+        S = torch.tensor([[0.30, 0.30, 0.30, 0.4]])
+        groups_t = [[0, 1, 2], [3]]
+        Tm = quotient_scores(S, [[0]], groups_t, mode="mean")
+        Tc = quotient_scores(S, [[0]], groups_t, mode="coverage")
+        self.assertLess(float(Tm[0, 0]), float(Tm[0, 1]))      # mean picks wrong
+        self.assertGreater(float(Tc[0, 0]), float(Tc[0, 1]))   # coverage picks right
+
+
+class EvictOutlierTest(unittest.TestCase):
+    """Merge-split refinement: leave-self-out eviction."""
+
+    def test_outlier_is_evicted_and_group_survives(self):
+        profiles = torch.tensor([[1.0, 0.0], [1.0, 0.05], [0.0, 1.0], [0.5, 0.5]])
+        groups = evict_outliers([[0, 1, 2], [3]], profiles, tau=0.5)
+        as_sets = sorted(sorted(g) for g in groups)
+        self.assertIn([0, 1], as_sets)      # coherent pair kept
+        self.assertIn([2], as_sets)         # outlier evicted to singleton
+        self.assertIn([3], as_sets)
+
+    def test_group_that_would_dissolve_is_kept(self):
+        # Both members disagree: eviction would leave <2 — keep group as-is.
+        profiles = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+        groups = evict_outliers([[0, 1]], profiles, tau=0.9)
+        self.assertEqual(sorted(sorted(g) for g in groups), [[0, 1]])
+
+
+class NeighborConsistencyTest(unittest.TestCase):
+    """Quotient-level consistency: neighbor support raises a match's score."""
+
+    def test_supported_match_gains_over_unsupported(self):
+        # Two source groups (neighbors), two target groups (neighbors).
+        # T ties (0,0)-(1,1) with (0,1)-(1,0); consistency of the pairing
+        # through neighboring groups must break the tie coherently.
+        T = torch.tensor([[1.0, 0.9], [0.9, 1.0]])
+        Aq = torch.tensor([[0.5, 0.5], [0.5, 0.5]])
+        T2 = neighbor_consistency_refine(T, Aq, Aq, beta=0.5)
+        self.assertGreater(float(T2[0, 0]), float(T2[0, 1]))
+
+    def test_quotient_adjacency_row_normalized(self):
+        g = _graph(4, [(0, 1), (2, 3), (1, 2)])
+        Aq = quotient_adjacency(g, [[0, 1], [2, 3]])
+        self.assertTrue(torch.allclose(Aq.sum(dim=1), torch.ones(2)))
