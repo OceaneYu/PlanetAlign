@@ -168,6 +168,8 @@ exps/reformat.ipynb
 
 # Project-local generated artifacts
 logs/
+# scratch extracts (paper figures/text), never repo content
+tmp/
 .DS_Store
 data/*.pt
 data/m2m/*.pt

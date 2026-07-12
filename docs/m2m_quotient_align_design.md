@@ -526,6 +526,14 @@ QuotientDecode 价值的直接证明；(3) T 仲裁跨 S 类型自适应（耦�
 3. **谱指纹接入仲裁**：erank/n、GD 尖峰数作为无锚点时的证据先验（§6-6）。
 4. **全量基准**：`run_m2m_experiments.py` 全 16 算法 × 全数据集，把 QuotientDecode(+auto) 作为统一读出层
    挂到每个 1-1 方法之上；多种子 + λ 敏感性，出终榜。
+5. **联合块结构方向（FGW / srGW，已立项未测）**：当前系统分组与匹配解耦（先按 S 行/列各自聚类，
+   再匈牙利匹配），而正确对象是 S 的**联合块结构**。两个候选：(a) **商图 FGW 匹配**——用 Fused
+   Gromov-Wasserstein 在商图上统一特征证据（池化 S）与结构证据（商图邻接），替代"匈牙利 + 线性
+   邻居平滑"（§5.10 的 `neighbor_consistency_refine` 本质是它的一阶线性近似；注意 §7-2 的教训：
+   组级 UOT 已证伪，故 FGW 应保持精确边际、只改代价的结构项）；(b) **srGW 分区发现**——半松弛 GW
+   （Vincent-Cuaz et al. 2021 起的 OT 图分区线）松弛单侧边际后，传输计划的多对一坍缩天然表达
+   M2M 分组，可作第五种分组证据候选进锚点仲裁。POT 0.9.6 已内置
+   `semirelaxed_fused_gromov_wasserstein` 等求解器。按 keep-only-if-better + 配对多种子协议测试。
 
 ## 复现
 
