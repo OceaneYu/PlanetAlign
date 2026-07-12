@@ -1,5 +1,12 @@
 """Probe alternative base aligners on datasets where JOENA fails.
 
+Lesson learned (arenas post-mortem): an incomplete roster condemns datasets
+falsely. The original probe omitted PARROT and used quick budgets; with
+PARROT (and BRIGHT at 100 epochs) all four "infeasible" datasets came alive
+(arenas blind MicroF1 0.50 -> 0.85, phone-email 0 -> 0.42, italy 0 -> 0.37,
+foursquare 0.05 -> 0.40). Always probe the full roster at honest budgets
+before declaring a dataset out of scope.
+
 QuotientDecode is aligner-agnostic: it only needs a similarity matrix ``S``
 with non-trivial alignment signal. On italy / phone-email / arenas (weak or no
 attributes, sparse structure) JOENA's anchor-RWR feature pipeline collapses
@@ -47,6 +54,8 @@ def configs() -> Dict[str, Dict[str, Any]]:
                           kwargs=dict(use_attr=False, total_epochs=10), mode="S"),
         "FINAL":     dict(factory=lambda: A.FINAL(alpha=0.9),
                           kwargs=dict(use_attr=True, total_epochs=10), mode="self.S"),
+        "PARROT":    dict(factory=lambda: A.PARROT(alpha=0.5),
+                          kwargs=dict(use_attr=True), mode="self.S"),
         "REGAL":     dict(factory=lambda: A.REGAL(),
                           kwargs=dict(use_attr=True), mode="embs-cos"),
         "BRIGHT":    dict(factory=lambda: A.BRIGHT(),
