@@ -64,6 +64,9 @@ def main() -> int:
     p.add_argument("--skip-ablations", action="store_true")
     p.add_argument("--out", type=Path, default=None)
     p.add_argument("--model", choices=["joena", "joena-pc", "auto", "ensemble"], default="joena")
+    p.add_argument("--base", default=None,
+                   help="use a base aligner (PARROT/BRIGHT/JOENA/...) instead of the "
+                        "joena-family model; S is sharpen-arbitrated blind on anchors")
     p.add_argument("--pc-lambda-unif", type=float, default=1.0)
     p.add_argument("--pc-lambda-align", type=float, default=1.0)
     p.add_argument("--pc-no-break-symmetry", action="store_true")
@@ -126,7 +129,28 @@ def main() -> int:
     anchors = get_anchor_pairs(ds.train_data, GIDS[0], GIDS[1])
     model_tag = "" if args.model == "joena" else f"_{args.model.replace('-', '_')}"
 
-    if args.model == "ensemble":
+    if args.base is not None:
+        # Base-aligner axis: train an alternative base (PARROT wins the
+        # weak-attribute datasets; docs §5.11.1), then pick raw vs softmax(S/T)
+        # blind on the training anchors. The base becomes a first-class arbitrated
+        # hyperparameter of the representation, not a per-dataset hand-pick.
+        from PlanetAlign.m2m_base import train_base_S, arbitrate_sharpen
+        model_tag = f"_base-{args.base}"
+        fa = "" if args.no_full_anchors else "_fa"
+        cache = Path("logs/m2m_diag/S_cache") / f"{args.dataset}_base-{args.base}_e-full_s{args.seed}{fa}.pt"
+        if cache.exists():
+            S_raw = torch.load(cache, map_location="cpu", weights_only=True)
+            print(f"[base {args.base}] loaded cached S {list(S_raw.shape)}")
+        else:
+            t0 = time.perf_counter()
+            S_raw = train_base_S(args.base, ds, gids=GIDS, seed=args.seed)
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            torch.save(S_raw, cache)
+            print(f"[base {args.base}] trained in {time.perf_counter()-t0:.1f}s; cached")
+        S, T_pick, tbl = arbitrate_sharpen(S_raw, g_src, g_tgt, anchors, use_attr=use_attr)
+        print(f"  [base {args.base}] sharpen-arbitrated T={T_pick} "
+              f"(corrected agreements: {[(str(t), round(c, 3)) for t, c, _ in tbl]})")
+    elif args.model == "ensemble":
         # Selector-free system: average the three branches' couplings (same
         # scale, ~doubly-stochastic) and decode once. Multi-seed measurement:
         # matches the oracle branch on douban/cora/pems08 without any

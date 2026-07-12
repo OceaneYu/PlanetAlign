@@ -459,6 +459,53 @@ QuotientDecode 价值的直接证明；(3) T 仲裁跨 S 类型自适应（耦�
 6. **锚点依赖**（分区层）：锚点 <20 或缺失时回落到对比度仲裁——在 Cora 型（画像退化）+无锚点的组合下
    会复现选错；彼时可用 §5.5 的谱指纹（erank/n 接近 1 ⇒ 不信画像）作无监督先验，尚未接入。
 
+## 5.13 PARROT 纳入统一系统：基座作为可仲裁轴 + 全网格多种子重验证
+
+§5.11.1 用 PARROT 复活了四个弱属性数据集。自然的追问：PARROT 只是弱属性的补丁，还是**一个更好的
+统一基座**？把基座从"逐数据集挑"升级为**锚点可仲裁的一等超参**（与证据选择、锐化温度同一套盲信号），
+在修正协议下做 4 种子 × 9 数据集全网格重验证。基座层已落地为 [`m2m_base.py`](../PlanetAlign/m2m_base.py)
+（`train_base_S` + `arbitrate_sharpen`：raw vs `softmax(S/T)` 按机会校正锚点一致率盲选），并接入
+`run_quotient_compare.py --base PARROT`。
+
+**盲评 MicroF1（4 种子均值 ± 总体 std；强属性五集另给 JOENA 家族集成对照）**：
+
+| 数据集 | PARROT（统一基座） | JOENA 家族集成 | 锚点仲裁 {PARROT,集成} | 逐种子基座选择 |
+|--------|--------------------|----------------|------------------------|----------------|
+| douban | **0.7296 ± 0.000** | 0.6944 ± 0.006 | 0.7296 | PPPP |
+| cora | 0.9805 ± 0.000 | **0.9922 ± 0.001** | **0.9922** | EEEE |
+| airport | **0.7980 ± 0.000** | 0.7785 ± 0.002 | 0.7980 | PPPP |
+| pems08 | 0.6005 ± 0.000 | **0.6428 ± 0.056** | 0.6005 | PPPP（应为 E，见下） |
+| ppi | **0.9301 ± 0.000** | 0.8466 ± 0.002 | 0.9301 | PPPP |
+| arenas | **0.8509 ± 0.000** | ≈0 | 0.8509 | PPPP |
+| phone-email | **0.4237 ± 0.000** | ≈0 | 0.4237 | PPPP |
+| italy | **0.3725 ± 0.000** | ≈0 | 0.3725 | PPPP |
+| foursquare | **0.4042 ± 0.000** | ≈0 | 0.4042 | PPPP |
+
+四条结论，每条都有实测支撑：
+
+1. **PARROT 是更强的统一基座，不只是弱属性补丁**。强属性五集 PARROT 均值 **0.808 vs 集成 0.789**
+   （+0.019），且同时复活四个弱属性集——**一个基座 7/9 数据集直接最优**，仅 cora（−0.011）、
+   pems08（−0.042）小幅落后。集成机制（JOENA + JOENA-PC + GM 三分支训练）被压缩成**单个确定性 OT 求解器**。
+
+2. **PARROT 确定性 = 跨种子 std 全为 0**；JOENA 家族带随机初始化，pems08 集成 std 高达 **±0.056**
+   （seed 2 塌到 0.551）。这是工程上被低估的稳健性优势——统一系统不再需要多种子平均来压方差。
+
+3. **基座可盲仲裁，且在大质量差处可靠、近饱和处失灵**。锚点仲裁 {PARROT, 集成} 在 20 个(数据集×种子)
+   格点中 **17 个盲选正确**——cora 全 4 种子正确选中集成（+0.011 回收），douban/airport/ppi 全选 PARROT。
+   3 个失配全在 **pems08**：PARROT 的机会校正锚点一致率**饱和到 0.996**（平衡边际把 S 逼成近置换，
+   每个锚点 1-1 命中），而其盲评 MicroF1（0.601）反低于集成（0.643）——正是 §5.8 记录的**锚点饱和
+   失灵**在基座层的重现。仲裁器**看不见** pems08 上集成的优势，只能盲选 PARROT。
+
+4. **诚实的保留决策（keep-only-if-better + 奥卡姆）**：默认统一系统 = **PARROT + QuotientDecode**
+   （单确定性基座，7/9 最优，强属性均值反超旧集成，20× 快）。锚点仲裁的集成分支作为**可选精修**保留
+   （`arbitrate_base` 已实现，全 9 集均值 0.6780 vs 纯 PARROT 0.6767，+0.0013 来自 cora 回收），但**不
+   作默认**——它对 all-9 均值的净增益微小、且拖回整套集成训练机器，还救不了 pems08。pems08 是**已知
+   残差**：集成真更优（+0.04），但无盲信号可选中它（锚点饱和），如实记录、不粉饰。
+
+复现：`python scripts/validate_base_selection.py --seeds 42 0 1 2 --bases PARROT` +
+`python scripts/compare_parrot_vs_ensemble.py --seeds 42 0 1 2` +
+`python scripts/aggregate_unified_grid.py`。
+
 ## 7. 下一步
 
 1. ~~端到端 profile 对比损失~~ → **已落地为 JOENA-PC（§5.6）**，且证实主要收益来自输入对称破缺。
@@ -486,11 +533,15 @@ QuotientDecode 价值的直接证明；(3) T 仲裁跨 S 类型自适应（耦�
 python -m unittest tests.test_m2m_quotient -v                      # 15 项设计断言
 python scripts/diagnose_rmt.py                                     # §5.5 谱诊断（缓存 S）
 
-# 最终系统（auto = JOENA/JOENA-PC 锚点仲裁 + QuotientDecode）：
+# 最终统一系统（PARROT 基座 + QuotientDecode，单确定性求解器，7/9 数据集最优；§5.13）：
 python scripts/run_quotient_compare.py \
-    --root data/m2m_overlap_0.05 --dataset douban_m2m --model auto
+    --root data/m2m_no_overlap --dataset arenas_m2m --base PARROT       # 弱属性四集同理
 python scripts/run_quotient_compare.py \
-    --root data/m2m_no_overlap --dataset cora_m2m --model auto     # 其余同理：airport_m2m / pems08_m2m
+    --root data/m2m_no_overlap --dataset ppi_m2m --base PARROT          # 强属性同理
+
+# 可选精修：JOENA 家族集成 / 锚点仲裁（cora 型上 +0.011，pems08 上因锚点饱和无法盲选中，§5.13）：
+python scripts/run_quotient_compare.py \
+    --root data/m2m_no_overlap --dataset cora_m2m --model auto
 
 # 单分支 + 完整消融（--model joena 或 joena-pc；去掉 --skip-ablations 出消融表）：
 python scripts/run_quotient_compare.py \
