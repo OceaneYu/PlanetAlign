@@ -404,7 +404,26 @@ PeMS08 锚点 6→34，仲裁进入有效区；vanilla 分支自身 0.447→0.59
 产生了低于可解下限的任务；候选补救为 v2 生成参数（邻居重叠保留），属改变任务难度的数据设计决策，
 待定夺（旧版数据与清单保留，任何 v2 须另立目录、全程留痕）。
 
-## 6. 局限（如实）
+## 5.12 生成器泄漏修复（flickr-lastfm）
+
+**报告的缺陷**（外部发现，已复现）：flickr-lastfm 在两套 root 中，训练锚点对 (4227, 11939) 原样出现在
+测试实体 e62（overlap 版还经模糊边界插入扩散到 +1 个碰撞节点/侧）。全量扫描确认**仅此一个数据集泄漏**
+（其余 17×2 干净）。
+
+**根因**：原始 `flickr-lastfm.pt` 的 anchor_links 中该对是**重复行**（452 行出现 2 次）；`train_test_split`
+按"对"洗牌，两份拷贝分落 train/test；生成器的去重只在测试对内部进行（`seen_src/seen_tgt` 空初始化），
+从不排除与训练锚点端点的跨集合碰撞——与报告的诊断完全一致。
+
+**修复**（[`many2many_builder.py`](../PlanetAlign/utils/many2many_builder.py)）：
+1. 构实体前先排除与训练锚点端点碰撞的测试对（计数入 metadata `dropped_train_collisions`）；
+2. 构建末端**硬护栏**：任何实体节点与训练锚点端点相交即抛错（`train` 模式下泄漏不可能静默回归）；
+3. 回归测试 [`test_m2m_builder_leakage.py`](../tests/test_m2m_builder_leakage.py)：重复锚点行 + 单侧碰撞 +
+   overlap 重引入三种情形。
+
+**重生成**：两套 root 的 flickr-lastfm 以原清单参数（seed 42 等）确定性重建——实体 362→361（恰好剔除
+泄漏对），`dropped_train_collisions=1`；清单以 amendment 方式留痕（原 18 条记录保留）。复扫两套 root：
+**18/18 全部 CLEAN**。注：flickr-lastfm 属大图（max(n)≈15.6k），不在当前实验网格内，本修复不改变已报告
+的任何数字，但堵住了未来使用该数据集时的评测污染。
 
 1. **不连通天花板已被推进但未消除**：JOENA-PC 使 Douban 的全局候选复活（0.677），但零分布残尾仍在
    （q999≈0.999），且 ACS 略降（0.508→0.446）——全局合并换来的 MicroF1/MSF1 提升伴随少量误并。

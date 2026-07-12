@@ -418,14 +418,31 @@ def build_many_to_many_benchmark(
         anchors = torch.cat([dataset.train_data, dataset.test_data], dim=0)
     anchors_np = anchors[:, [gids[0], gids[1]]].cpu().numpy()
 
+    # Endpoints that will serve as training supervision must never become
+    # evaluation entities. Original datasets can contain duplicate anchor rows
+    # or nodes shared across anchor pairs (e.g. flickr-lastfm carries the pair
+    # (4227, 11939) twice); the pair-level train/test split then puts copies of
+    # the same node on both sides, and building an entity from the test copy
+    # leaks a training pair into the ground truth.
+    excluded_src: set = set()
+    excluded_tgt: set = set()
+    if train_anchor_source == "train":
+        train_np = dataset.train_data[:, [gids[0], gids[1]]].cpu().numpy()
+        excluded_src = {int(u) for u, _ in train_np}
+        excluded_tgt = {int(v) for _, v in train_np}
+
     # De-duplicate anchors per side. If the same node appears in multiple
     # anchor pairs we must keep it in only one entity to avoid ambiguous
     # splits; later the overlap mechanism handles planned reuse.
     seen_src: set = set()
     seen_tgt: set = set()
     dedup_pairs: List[Tuple[int, int]] = []
+    dropped_train_collisions = 0
     for u, v in anchors_np:
         u, v = int(u), int(v)
+        if u in excluded_src or v in excluded_tgt:
+            dropped_train_collisions += 1
+            continue
         if u in seen_src or v in seen_tgt:
             continue
         seen_src.add(u)
@@ -483,6 +500,21 @@ def build_many_to_many_benchmark(
     else:
         train_anchors = torch.zeros((0, 2), dtype=torch.long)
 
+    # Hard post-condition: supervision and evaluation must be node-disjoint.
+    # (Scoped to "train" mode; "one_to_one" reuses entity nodes by design and
+    # is unsuitable for blind evaluation.) This makes the flickr-lastfm class
+    # of leakage impossible to regress silently.
+    if train_anchor_source == "train" and train_anchors.numel():
+        ta_src = {int(x) for x in train_anchors[:, 0].tolist()}
+        ta_tgt = {int(y) for y in train_anchors[:, 1].tolist()}
+        for eid, item in entities.items():
+            bad_s = [n for n in item["src"] if int(n) in ta_src]
+            bad_t = [n for n in item["tgt"] if int(n) in ta_tgt]
+            if bad_s or bad_t:
+                raise ValueError(
+                    f"train/test leakage: entity {eid} shares nodes with train "
+                    f"anchors (src={bad_s}, tgt={bad_t}); generator invariant violated")
+
     metadata = {
         "source_dataset": getattr(dataset, "name", "unknown"),
         "split_ratios": split_ratios,
@@ -492,6 +524,7 @@ def build_many_to_many_benchmark(
         "num_entities": int(num_entities),
         "entity_type_counts": counts,
         "overlap_insertions": int(overlap_inserted),
+        "dropped_train_collisions": int(dropped_train_collisions),
         "seed": int(seed),
         "orig_num_nodes": [int(g_src.num_nodes), int(g_tgt.num_nodes)],
         "new_num_nodes": [int(new_src.num_nodes), int(new_tgt.num_nodes)],

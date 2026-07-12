@@ -50,9 +50,12 @@ def use_full_anchor_supervision(dataset) -> None:
 
     The M2M builder stores the *original* train split (the paper's 20%
     protocol) in ``anchor_links`` and builds the entity ground truth from the
-    original test split — supervision and evaluation are disjoint by
-    construction (verified: anchor nodes never appear in GT entities, all 9
-    datasets). Loading such a dataset through ``Dataset(train_ratio=0.2)``
+    original test split — supervision and evaluation are node-disjoint, an
+    invariant now *enforced by the generator* (cross-set collision exclusion +
+    a hard post-condition in ``many2many_builder``; the original flickr-lastfm
+    data carries a duplicated anchor pair that previously leaked into entity
+    e62 — fixed and regenerated 2026-07-12, see the build manifests'
+    amendments). Loading such a dataset through ``Dataset(train_ratio=0.2)``
     therefore *double-splits* the supervision down to ~4% of the original
     anchors, which starves structure-reliant graphs (arenas/phone-email/italy
     collapse to Hits@1 ~ 0 while their originals reach 0.98/0.35/0.10).
