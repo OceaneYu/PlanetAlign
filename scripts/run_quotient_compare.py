@@ -8,7 +8,7 @@ readout alone — the controlled experiment behind ``docs/m2m_quotient_align_des
 Readouts
 --------
 - ``attr-blind``       : attribute-cohesion grouping + greedy match (m2m_blind default)
-- ``profile-greedy``   : fixed-tau profile grouping + greedy match (= JOENAGroupDecode)
+- ``profile-greedy``   : fixed-tau profile grouping + greedy match (the earliest readout)
 - ``quotient``         : full QuotientDecode (Otsu taus, anti-chaining, Hungarian, 2 iters)
 - ablations           : quotient minus one component at a time
 
@@ -45,7 +45,7 @@ M2M_METRICS = ["ACS", "MSF1", "MicroF1", "M2M-SGS", "M2M-EGS"]
 
 
 def profile_greedy_scores(S, gt, g_src, g_tgt, tau=0.1):
-    """The JOENAGroupDecode readout: fixed-tau profile union-find + greedy match."""
+    """The earliest readout: fixed-tau profile union-find + greedy match."""
     src_groups = discover_groups_by_profile(S, g_src, tau=tau)
     tgt_groups = discover_groups_by_profile(S.T.contiguous(), g_tgt, tau=tau)
     pred = decode_entity_map(S, src_groups, tgt_groups)
@@ -212,7 +212,7 @@ def main() -> int:
     sc = evaluate_blind(S, gt, g_src, g_tgt, metrics=M2M_METRICS, use_attr=use_attr)
     add("attr-blind", sc, dt=time.perf_counter() - t)
 
-    # 2) JOENAGroupDecode readout (fixed tau 0.1, greedy)
+    # 2) fixed-tau profile-greedy readout (tau 0.1)
     t = time.perf_counter()
     sc, counts = profile_greedy_scores(S, gt, g_src, g_tgt, tau=0.1)
     add("profile-greedy(tau=0.1)", sc, {"groups": counts}, time.perf_counter() - t)

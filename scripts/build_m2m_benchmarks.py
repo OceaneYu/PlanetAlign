@@ -306,13 +306,11 @@ def main() -> int:
     return 0 if failed == 0 else 1
 
 
+# Example:
+#   python scripts/build_m2m_benchmarks.py \
+#     --input-root data --output-root data/m2m_no_overlap \
+#     --overlap-ratio 0 --keep-going
+# (use --overlap-ratio 0.05 for the overlapping-neighbour regime)
+
 if __name__ == "__main__":
     raise SystemExit(main())
-
-"""
-python scripts/build_m2m_benchmarks.py \
-  --input-root data \
-  --output-root data/m2m_no_overlap \
-  --overlap-ratio 0 \ 0.05(考虑第四种情况)
-  --keep-going
-"""

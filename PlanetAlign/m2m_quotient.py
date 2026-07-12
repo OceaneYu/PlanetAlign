@@ -847,14 +847,15 @@ def evaluate_quotient_blind(S: torch.Tensor,
 
 
 # ---------------------------------------------------------------------------
-# Model wrapper (JOENA + quotient decode), mirroring JOENAGroupDecode
+# Model wrapper (JOENA aligner + quotient decode)
 # ---------------------------------------------------------------------------
 class JOENAQuotientDecode(BaseModel):
     """JOENA aligner + quotient decoding readout.
 
-    Same training path as :class:`PlanetAlign.m2m_decode.JOENAGroupDecode`;
-    only the readout differs (adaptive taus, anti-chaining agglomeration,
-    Hungarian quotient matching, alternating refinement).
+    Trains JOENA to produce the node similarity ``S``, then applies the full
+    quotient readout (adaptive taus, anti-chaining agglomeration, Hungarian
+    quotient matching, alternating refinement). The readout is aligner-agnostic;
+    see :mod:`PlanetAlign.m2m_base` for swapping in other base aligners (PARROT).
     """
 
     def __init__(self,
