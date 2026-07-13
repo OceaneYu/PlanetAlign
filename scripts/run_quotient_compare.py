@@ -235,6 +235,7 @@ def main() -> int:
             ("quotient - null-cand",    dict(null_candidate=False, anchors=anchors)),
             ("quotient + global-cand",  dict(global_candidate=True, anchors=anchors)),
             ("quotient + overlap(.35)", dict(overlap_expand_tau=0.35, anchors=anchors)),
+            ("quotient + fgw(a.1)",     dict(matcher="fgw", fgw_alpha=0.1, anchors=anchors)),
         ]:
             t = time.perf_counter()
             sc, _, info = evaluate_quotient_blind(S, gt, g_src, g_tgt, metrics=M2M_METRICS,

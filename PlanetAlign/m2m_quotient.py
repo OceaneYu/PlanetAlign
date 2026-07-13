@@ -689,6 +689,47 @@ def greedy_match(T: torch.Tensor, relative_threshold: float = 0.0) -> Dict[int, 
     return {a: int(best_idx[a]) for a in range(T.shape[0]) if float(best_val[a]) > cutoff}
 
 
+def fgw_match(T: torch.Tensor,
+              Aq_src: torch.Tensor,
+              Aq_tgt: torch.Tensor,
+              alpha: float = 0.5,
+              relative_threshold: float = 0.0) -> Dict[int, int]:
+    """Quotient matching by Fused Gromov-Wasserstein (structure-aware).
+
+    The quotient-level consistency principle — "if group A matches B, A's
+    neighbour groups should match B's neighbour groups" — is exactly the
+    Gromov-Wasserstein structure term. :func:`neighbor_consistency_refine`
+    (``T <- (1-b) T + b * Aq1 T Aq2^T``) is its *first-order linearization*
+    about a uniform plan (the GW gradient is proportional to ``Aq1 T Aq2^T``);
+    FGW is the exact nonlinear form. Feature cost comes from the pooled scores
+    ``T``, structure from the (symmetrized) quotient adjacency, blended by
+    ``alpha``. The soft plan is then rounded by Hungarian: quotient-level
+    exclusivity is load-bearing (group-level unbalanced OT was falsified), so
+    the marginals stay exact and the readout stays one-to-one — FGW only
+    *enriches the matching cost* with structure, it does not soften exclusivity.
+    """
+    import ot
+
+    g1, g2 = T.shape
+    if g1 == 0 or g2 == 0:
+        return {}
+    if g1 == 1 or g2 == 1:                      # GW term is vacuous; fall back
+        return hungarian_match(T, relative_threshold)
+    s = T.detach().to(torch.float32)
+    lo, hi = float(s.min()), float(s.max())
+    # Feature cost in [0,1]: high score -> low cost. Same scale as the GW term
+    # (symmetric row-normalized adjacencies live in [0,1]) so alpha blends fairly.
+    M = (1.0 - (s - lo) / (hi - lo)) if hi > lo else torch.zeros_like(s)
+    C1 = 0.5 * (Aq_src + Aq_src.T)
+    C2 = 0.5 * (Aq_tgt + Aq_tgt.T)
+    p = torch.full((g1,), 1.0 / g1, dtype=torch.float64)
+    q = torch.full((g2,), 1.0 / g2, dtype=torch.float64)
+    G = ot.gromov.fused_gromov_wasserstein(
+        M.double().numpy(), C1.double().numpy(), C2.double().numpy(),
+        p.numpy(), q.numpy(), loss_fun="square_loss", alpha=float(alpha))
+    return hungarian_match(torch.from_numpy(G).to(torch.float32), relative_threshold)
+
+
 def _partition_signature(groups: Sequence[Sequence[int]]) -> Tuple[Tuple[int, ...], ...]:
     return tuple(sorted(tuple(sorted(g)) for g in groups))
 
@@ -709,6 +750,7 @@ def quotient_decode(S: torch.Tensor,
                     overlap_expand_tau: Optional[float] = None,
                     score_mode: str = "mean",
                     neighbor_beta: float = 0.0,
+                    fgw_alpha: float = 0.5,
                     evict: bool = True,
                     ) -> Tuple[EntityMap, Dict[str, object]]:
     """Decode a many-to-many entity map from a node-level similarity matrix.
@@ -720,7 +762,11 @@ def quotient_decode(S: torch.Tensor,
         iteration with Otsu's method.
     max_iters : decode/match alternations. Iteration 1 uses raw profiles
         (rows/columns of ``S``); later iterations use group-pooled profiles.
-    matcher : ``"hungarian"`` (global 1-1 on the quotient) or ``"greedy"``.
+    matcher : ``"hungarian"`` (global 1-1 on the quotient), ``"greedy"``, or
+        ``"fgw"`` (Fused Gromov-Wasserstein: structure-aware cost via the
+        quotient adjacency, blended by ``fgw_alpha``, then rounded by Hungarian).
+    fgw_alpha : structure/feature blend for ``matcher="fgw"`` (0 = pure feature,
+        1 = pure structure).
     anti_chaining : apply the average-linkage centroid gate.
     evidence_selection : decode candidate partitions per side (profile@Otsu and
         attribute cohesion) and select the pair with the highest group-level
@@ -798,8 +844,13 @@ def quotient_decode(S: torch.Tensor,
         T = neighbor_consistency_refine(
             T, quotient_adjacency(graph_src, src_groups),
             quotient_adjacency(graph_tgt, tgt_groups), beta=neighbor_beta)
-    match = (hungarian_match if matcher == "hungarian" else greedy_match)(
-        T, relative_threshold=relative_match_threshold)
+    if matcher == "fgw":
+        match = fgw_match(T, quotient_adjacency(graph_src, src_groups),
+                          quotient_adjacency(graph_tgt, tgt_groups),
+                          alpha=fgw_alpha, relative_threshold=relative_match_threshold)
+    else:
+        match = (hungarian_match if matcher == "hungarian" else greedy_match)(
+            T, relative_threshold=relative_match_threshold)
 
     pred: EntityMap = {}
     for a, members in enumerate(src_groups):
