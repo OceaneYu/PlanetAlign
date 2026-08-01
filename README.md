@@ -10,7 +10,7 @@
     <a href="https://github.com/yq-leo/PlanetAlign"><img src="https://img.shields.io/badge/PRs-Welcome-blue.svg"></a>
 </div>
 
-# PlanetAlign: A comprehensive Python library for NA
+# A comprehensive Python library for Network Alignment
 
 PlanetAlign is a comprehensive Python library for network alignment (NA), featuring a rich collection of built-in datasets, methods, and evaluation pipelines with efficient and easy-to-use APIs.
 
