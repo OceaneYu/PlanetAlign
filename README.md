@@ -54,10 +54,12 @@ For detailed documentations and a quick-start tutorial, please see https://plane
 
 ## 📜 Citation
 ``` bibtex
-@article{yu2025planetalign,
-  title={PLANETALIGN: A Comprehensive Python Library for Benchmarking Network Alignment},
+@inproceedings{yu2026planetalign,
+  title={Planetalign: A comprehensive python library for benchmarking network alignment},
   author={Yu, Qi and Zeng, Zhichen and Yan, Yuchen and Liu, Zhining and Jing, Baoyu and Qiu, Ruizhong and Azad, Ariful and Tong, Hanghang},
-  journal={arXiv preprint arXiv:2505.21366},
-  year={2025}
+  booktitle={International Conference on Learning Representations},
+  volume={2026},
+  pages={66087--66115},
+  year={2026}
 }
 ```
