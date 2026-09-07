@@ -2,7 +2,7 @@ from typing import Union, Optional, List, Tuple
 
 import numpy as np
 import torch
-from torch_geometric.utils import to_undirected
+from torch_geometric.utils import to_undirected, subgraph
 from torch_geometric.data import Data
 
 from PlanetAlign.data import Dataset
@@ -76,7 +76,7 @@ def add_edge_noises(dataset: Dataset,
 
     Parameters
     ----------
-    dataset : PyG dataset
+    dataset : PlanetAlign dataset
         The input dataset containing graphs.
     noise_ratio : float
         The ratio of edges to perturb in each graph.
@@ -89,7 +89,7 @@ def add_edge_noises(dataset: Dataset,
 
     Returns
     -------
-    PyG dataset
+    PlanetAlign dataset
         The dataset with perturbed edges.
     """
     assert 0 <= noise_ratio <= 1, "Noise ratio must be between 0 and 1."
@@ -112,6 +112,200 @@ def add_edge_noises(dataset: Dataset,
         graph = dataset.pyg_graphs[gid]
         edge_index = perturb_edges(graph, noise_ratio, seed)
         dataset.pyg_graphs[gid].edge_index = edge_index
+
+    return dataset
+
+
+def perturb_nodes(
+    graph: Data,
+    noise_ratio: float,
+    mode: str,
+    seed: Optional[int] = None,
+) -> Data:
+    """
+    Perturb nodes in a PyG graph by either randomly adding or deleting nodes.
+
+    Parameters
+    ----------
+    graph : PyG Data
+        Input PyG graph.
+    noise_ratio : float
+        Ratio of nodes to add/delete.
+    mode : str
+        Either "add" or "delete".
+    seed : int, optional
+        Random seed.
+
+    Returns
+    -------
+    PyG Data
+        A new perturbed PyG graph.
+    """
+    assert 0 <= noise_ratio <= 1, "noise_ratio must be between 0 and 1."
+    assert mode in {"add", "delete"}, "mode must be either 'add' or 'delete'."
+
+    if mode == "delete":
+        assert noise_ratio < 1, "delete noise_ratio must be < 1."
+
+    if seed is not None:
+        rng_state = torch.random.get_rng_state()
+        torch.manual_seed(seed)
+
+    graph = graph.clone()
+
+    num_nodes = graph.num_nodes
+    device = graph.edge_index.device
+
+    if mode == "delete":
+        num_delete = int(num_nodes * noise_ratio)
+
+        perm = torch.randperm(num_nodes, device=device)
+        keep_nodes = perm[num_delete:]
+        keep_nodes, _ = torch.sort(keep_nodes)
+
+        edge_attr = getattr(graph, "edge_attr", None)
+
+        edge_index, edge_attr = subgraph(
+            keep_nodes,
+            graph.edge_index,
+            edge_attr=edge_attr,
+            relabel_nodes=True,
+            num_nodes=num_nodes,
+        )
+
+        if graph.x is not None:
+            graph.x = graph.x[keep_nodes]
+
+        if hasattr(graph, "y") and graph.y is not None:
+            if graph.y.size(0) == num_nodes:
+                graph.y = graph.y[keep_nodes]
+
+        graph.edge_index = edge_index
+
+        if edge_attr is not None:
+            graph.edge_attr = edge_attr
+
+        graph.num_nodes = keep_nodes.numel()
+
+    else:  # mode == "add"
+        if graph.x is None:
+            raise ValueError("Cannot add nodes when graph.x is None.")
+
+        num_add = int(num_nodes * noise_ratio)
+
+        feat_dim = graph.x.size(1)
+        device = graph.x.device
+
+        new_x = torch.randn(
+            num_add,
+            feat_dim,
+            device=device,
+            dtype=graph.x.dtype,
+        )
+
+        graph.x = torch.cat([graph.x, new_x], dim=0)
+
+        avg_degree = max(1, graph.edge_index.size(1) // max(num_nodes, 1))
+
+        src_list, dst_list = [], []
+
+        for i in range(num_add):
+            new_node_id = num_nodes + i
+
+            neighbors = torch.randint(
+                low=0,
+                high=num_nodes,
+                size=(avg_degree,),
+                device=device,
+            )
+
+            src_list.append(torch.full_like(neighbors, new_node_id))
+            dst_list.append(neighbors)
+
+            src_list.append(neighbors)
+            dst_list.append(torch.full_like(neighbors, new_node_id))
+
+        if num_add > 0:
+            added_edges = torch.stack(
+                [torch.cat(src_list), torch.cat(dst_list)],
+                dim=0,
+            )
+
+            graph.edge_index = torch.cat(
+                [graph.edge_index, added_edges],
+                dim=1,
+            )
+
+        graph.num_nodes = num_nodes + num_add
+
+    if seed is not None:
+        torch.random.set_rng_state(rng_state)
+
+    return graph
+
+
+def add_node_noises(
+    dataset: Dataset,
+    noise_ratio: float,
+    mode: str,
+    gids: Optional[Union[int, List[int], Tuple[int, ...]]] = None,
+    seed: Optional[int] = None,
+    inplace: bool = False,
+) -> Dataset:
+    """
+    Add node noise to graphs in a PlanetAlign dataset by perturbing nodes through random addition or deletion.
+
+    Parameters
+    ----------
+    dataset : PlanetAlign Dataset
+        Input PlanetAlign dataset.
+    noise_ratio : float
+        Ratio of nodes to add/delete.
+    mode : str
+        Either "add" or "delete".
+    gids : int, list of int, tuple of int, optional
+        Graph IDs to perturb. If None, all graphs are perturbed.
+    seed : int, optional
+        Random seed.
+    inplace : bool
+        Whether to modify the dataset in place.
+
+    Returns
+    -------
+    PlanetAlign Dataset
+        Dataset with node-perturbed graphs.
+    """
+    assert 0 <= noise_ratio <= 1, "noise_ratio must be between 0 and 1."
+    assert mode in {"add", "delete"}, "mode must be either 'add' or 'delete'."
+
+    if mode == "delete":
+        assert noise_ratio < 1, "delete noise_ratio must be < 1."
+
+    if gids is not None:
+        if isinstance(gids, int):
+            gids = [gids]
+        elif isinstance(gids, (list, tuple)):
+            gids = list(gids)
+        else:
+            raise TypeError("gids must be an int, list of int, or tuple of int.")
+    else:
+        gids = list(range(len(dataset.pyg_graphs)))
+
+    assert all(0 <= gid < len(dataset.pyg_graphs) for gid in gids), \
+        "Invalid graph IDs."
+
+    if not inplace:
+        dataset = dataset.clone()
+
+    for i, gid in enumerate(gids):
+        graph_seed = None if seed is None else seed + i
+
+        dataset.pyg_graphs[gid] = perturb_nodes(
+            dataset.pyg_graphs[gid],
+            noise_ratio=noise_ratio,
+            mode=mode,
+            seed=graph_seed,
+        )
 
     return dataset
 
