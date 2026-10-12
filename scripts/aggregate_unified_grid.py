@@ -1,3 +1,7 @@
+# 文件作用：汇总基础算法选择与 PARROT/集成比较的多种子实验，打印各数据集的均值和标准差。
+# 数据来源：main() 读取 scripts/validate_base_selection.py 与 scripts/compare_parrot_vs_ensemble.py 产生的结果 JSON。
+# 阅读建议：先看 main() 中三个结果文件路径及按 dataset/seed 组织记录的方式。
+
 """Aggregate the multi-seed unified-system grid into the decision table.
 
 Reads the three result files produced by the base-selection experiments and
@@ -24,16 +28,19 @@ STRONG = ["douban_m2m", "cora_m2m", "airport_m2m", "pems08_m2m", "ppi_m2m"]
 WEAK = ["arenas_m2m", "phone-email_m2m", "italy_m2m", "foursquare-twitter_m2m"]
 
 
+# 功能：读取结果 JSON；文件不存在时返回空列表，允许汇总部分已有实验。
 def load(path: Path) -> list:
     return json.load(open(path)) if path.exists() else []
 
 
+# 功能：将多次分数格式化为均值±标准差，缺失时显示占位符。
 def ms(xs: List[float]) -> str:
     if not xs:
         return "     -    "
     return f"{mean(xs):.4f}±{pstdev(xs):.3f}" if len(xs) > 1 else f"{xs[0]:.4f}     "
 
 
+# 功能：对齐三组实验的 dataset/seed 记录，比较 PARROT、集成与锚点选择结果并打印表格。
 def main() -> int:
     # PARROT blind MicroF1 per (dataset, seed) from the two PARROT sweeps.
     parrot: Dict[str, Dict[int, float]] = {}

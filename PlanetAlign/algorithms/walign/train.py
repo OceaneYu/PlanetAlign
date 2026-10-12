@@ -1,8 +1,13 @@
+# 文件作用：实现 WAlign 的伪锚点预测、监督对齐、分布对抗与属性重构步骤。
+# 数据来源：PlanetAlign/algorithms/walign/main.py → WAlign.train() 传入编码器、优化器、两图与训练选项。
+# 结果去向：各步骤返回损失；部分函数内部更新判别器/重构器，主入口负责编码器的优化。
+
 import torch
 import torch.nn.functional as F
 from .model import FeatureReconstructLoss
 
 
+# 功能：编码并归一化两侧节点，每个目标节点选最高分源节点，返回两列的伪对应节点对。
 def pred_anchor_links_from_embeddings(edge_index1, edge_index2, node_attr1, node_attr2, trans_layer, model, prior=None, prior_rate=0):
     emb1 = model(node_attr1, edge_index1)
     emb2 = trans_layer(model(node_attr2, edge_index2))
@@ -20,6 +25,7 @@ def pred_anchor_links_from_embeddings(edge_index1, edge_index2, node_attr1, node
     return anchor_links
 
 
+# 功能：要求正对应的余弦相似度高于负例一定幅度，返回 margin 损失。
 def train_supervise_align(edge_index1, edge_index2, node_attr1, node_attr2, anchor_links, trans_layer, model, margin=0.2, batch_size=128):
     avg_loss = 0
     neg_sampling_matrix = get_neg_sampling_align(anchor_links, node_attr1.shape[0])
@@ -39,6 +45,7 @@ def train_supervise_align(edge_index1, edge_index2, node_attr1, node_attr2, anch
     return avg_loss
 
 
+# 功能：为已知或伪对应抽取其他目标节点，返回负例表给 train_supervise_align()。
 def get_neg_sampling_align(anchor_links, n, neg_sampling_num=5):
     neg_sampling_matrix = torch.zeros(anchor_links.size(0), neg_sampling_num + 2, dtype=torch.long)
     neg_sampling_matrix[:, 0] = anchor_links[:, 0]
@@ -51,6 +58,7 @@ def get_neg_sampling_align(anchor_links, n, neg_sampling_num=5):
     return neg_sampling_matrix
 
 
+# 核心思路：先固定嵌入更新判别器并裁剪权重，再返回用于拉近两侧分布的编码器目标。
 def train_wgan_adv_pseudo_self(edge_index1, edge_index2, node_attr1, node_attr2, trans_layer, model, w_discriminator, wd_optimizer, batch_d_per_iter=5):
     embd0 = model(node_attr1, edge_index1)
     embd1 = trans_layer(model(node_attr2, edge_index2))
@@ -82,6 +90,7 @@ def train_wgan_adv_pseudo_self(edge_index1, edge_index2, node_attr1, node_attr2,
     return loss
 
 
+# 功能：固定当前嵌入训练两侧属性重构器，再返回用于主网络更新的重构损失。
 def train_feature_recon(edge_index1, edge_index2, node_attr1, node_attr2, trans_layer, model, recon_models, recon_optimizers, batch_r_per_iter=10):
     recon_model0, recon_model1 = recon_models
     recon1_optimizer, recon2_optimizer = recon_optimizers

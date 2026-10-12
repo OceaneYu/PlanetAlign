@@ -1,3 +1,8 @@
+# 文件作用：实现 HOT，先压缩多图再求多边际最优传输以降低计算规模。
+# 数据来源：调用者或 scripts/run_m2m_experiments.py → evaluate_algorithm() 将 Dataset 传给 HOT.train()。
+# 核心依赖：PlanetAlign/algorithms/hot/mot.py → compute_p_i()、compute_p_ij()、compute_l()；PlanetAlign/algorithms/hot/metrics.py 的多图评估函数。
+# 结果去向：返回簇匹配张量字典和日志；两图模式另保存 self.S，scripts/run_m2m_experiments.py → _extract_s() 从中提取节点矩阵。
+
 from typing import List, Tuple, Union
 import time
 import numpy as np
@@ -15,6 +20,7 @@ from .mot import *
 from .metrics import multi_align_hits_ks_scores, multi_align_mrr_score
 
 
+# 功能：维护多图分层传输的权重与迭代设置。
 class HOT(BaseModel):
     """OT-based method HOT for multi-network alignment.
     HOT is proposed by the paper "`Hierarchical Multi-Marginal Optimal Transport for Network Alignment <https://doi.org/10.1609/aaai.v38i15.29605>`_"
@@ -39,6 +45,9 @@ class HOT(BaseModel):
         self.alpha = alpha
         self.lp = lp
 
+    # 输入来源：Dataset 的多张图与训练锚点形成 RWR；测试锚点只用于多图日志指标。
+    # 核心思路：构造 RWR 与可选属性代价，用 _get_fgw_clusters() 聚类，再对簇内节点执行 _multi_fgw()。
+    # 输出结果：返回簇内多图匹配张量字典与日志；两图模式还把簇内分数填回原节点大小的 self.S。
     def train(self,
               dataset: Dataset,
               gids: Union[List[int], Tuple[int, ...]],
@@ -147,6 +156,7 @@ class HOT(BaseModel):
 
         return sim_tensor_dict, logger
 
+    # 功能：以多图代价、各图结构与边际分布迭代求联合传输张量，返回张量与损失记录。
     def _multi_fgw(self, cross_cost_tensor, A, marginal_dists, in_iters, out_iters, tau=0.5, eps=1e-5):
         num_dists = len(marginal_dists)
         N = [len(marginal_dists[gid]) for gid in range(num_dists)]
@@ -189,6 +199,7 @@ class HOT(BaseModel):
             i = i + 1
         return t, torch.tensor(loss_record)
 
+    # 功能：用 POT 的 fgw_barycenters() 找共享簇，将各图节点分配给簇并整理对应代价。
     def _get_fgw_clusters(self, graphs, rwr_emb_list, intra_cost_list, num_clusters, use_attr):
         Ys = []
         norm_attr_list = []
@@ -230,6 +241,7 @@ class HOT(BaseModel):
 
         return c, cr, cx, ca
 
+    # 功能：按单图结构位置与可选属性构造内部节点代价。
     def _get_intra_cost(self, graph, rwr_emb, use_attr):
         adj = to_dense_adj(graph.edge_index, max_num_nodes=graph.num_nodes).squeeze(0).to(self.dtype).to(self.device)
         rwr_sim = pairwise_cosine_similarity(rwr_emb, rwr_emb)
@@ -237,6 +249,7 @@ class HOT(BaseModel):
         attr_sim = attr_sim.to(self.dtype).to(self.device)
         return torch.clamp((self.alpha * rwr_sim + (1 - self.alpha) * attr_sim) * (1 - adj), min=0)
 
+    # 功能：组合每对图的节点特征距离，返回多图联合代价张量。
     def _get_cross_cost(self, rwr_emb_list, x_list, use_attr, p=2):
         emb_list = [F.normalize(rwr_emb, p=p, dim=1) for rwr_emb in rwr_emb_list]
         if use_attr:

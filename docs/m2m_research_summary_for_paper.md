@@ -50,7 +50,7 @@ OT 混合：JOENA）盲评 MicroF1 普遍接近零或远低于其 1-1 水平。�
 | 10 | arenas 等四集"基座全灭" | **协议 bug（重大）**：m2m 的 anchor_links 本身就是原 20% 训练切分，再 train_ratio=0.2 二次切分 → 实际监督仅 ~4% | `use_full_anchor_supervision()` 修正；全部缓存/脚本迁移（_fa 标签）；此前所有数字为 4% 体制（内部一致但非论文协议） |
 | 11 | 修正协议后四集仍被判"不可解" | **探测缺陷，不是数据缺陷**：probe 名单缺 PARROT + quick 预算（BRIGHT e10 held-out Hits 0.58 vs e100 0.92） | PARROT 基座四集全部复活；"拆分摧毁结构信号"的机理判断只对 BRIGHT-quick 成立 → 撤回，基准 v2 提议撤回；方法论规则：**名单不全 + 预算不诚实的探测会冤杀数据集** |
 | 12 | flickr-lastfm 训练锚点 (4227,11939) 出现在测试实体 e62 | 原始数据锚点表有**重复行**，按对切分两份分落 train/test；生成器只在测试集内部去重 | 生成器跨集合端点排除 + 构建末端硬护栏（泄漏即抛错）+ 回归测试；确定性重建（实体 362→361）；两 root 复扫 18/18 干净 |
-| 13 | PARROT 只是弱属性补丁吗？ | 基座应是**锚点可仲裁的一等超参**，与证据/阈值/温度同一套盲信号 | `m2m_base.py`：train_base_S + arbitrate_sharpen（raw vs softmax(S/T) 锚点盲选）；4 种子×9 集全网格：**PARROT 统一基座 7/9 直接最优** |
+| 13 | PARROT 只是弱属性补丁吗？ | 基座应是**锚点可仲裁的一等超参**，与证据/阈值/温度同一套盲信号 | `m2m/base.py`：train_base_S + arbitrate_sharpen（raw vs softmax(S/T) 锚点盲选）；4 种子×9 集全网格：**PARROT 统一基座 7/9 直接最优** |
 
 ## 四、最终算法：PARROT + QuotientDecode（+ 可选集成精修）
 

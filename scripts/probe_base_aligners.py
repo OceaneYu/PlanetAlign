@@ -1,3 +1,8 @@
+# 文件作用：快速探查不同基础算法在指定多对多数据集上能否产生可用节点分数。
+# 数据来源：main() 加载多对多 Dataset 与真实实体 JSON，按 configs() 创建候选算法。
+# 结果去向：提取的 S 缓存到 logs/m2m_diag/S_cache，打印节点 Hits@1 与实体评分用于诊断。
+# 阅读建议：先看 configs() 的实际训练预算；探查结果不等于完整训练基准结果。
+
 """Probe alternative base aligners on datasets where JOENA fails.
 
 Lesson learned (arenas post-mortem): an incomplete roster condemns datasets
@@ -38,7 +43,7 @@ import torch
 import PlanetAlign
 from PlanetAlign.data import Dataset
 from PlanetAlign.m2m import use_full_anchor_supervision
-from PlanetAlign.m2m_quotient import evaluate_quotient_blind
+from PlanetAlign.m2m.quotient import evaluate_quotient_blind
 from PlanetAlign.metrics import hits_ks_scores
 from PlanetAlign.utils import get_anchor_pairs, pairwise_cosine_similarity
 
@@ -46,6 +51,7 @@ GIDS = [0, 1]
 CACHE = Path("logs/m2m_diag/S_cache")
 
 
+# 功能：定义探查用算法工厂、训练参数与结果模式，预算以当前代码为准。
 def configs() -> Dict[str, Dict[str, Any]]:
     """Quick-profile configs (mirrors scripts/run_m2m_experiments.py)."""
     A = PlanetAlign.algorithms
@@ -71,6 +77,7 @@ def configs() -> Dict[str, Dict[str, Any]]:
     }
 
 
+# 功能：从算法状态、返回矩阵或嵌入提取 S，供 main() 评估与缓存。
 def extract_s(algo, ret, mode):
     if not isinstance(ret, tuple):
         ret = (ret,)
@@ -88,6 +95,7 @@ def extract_s(algo, ret, mode):
     raise ValueError(mode)
 
 
+# 核心思路：加载数据、恢复完整训练锚点，逐算法训练/评估并捕获失败，缓存成功的 S。
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--root", type=Path, default=Path("data/m2m_no_overlap"))

@@ -1,40 +1,38 @@
+# 文件作用：统一导出节点排名指标和多对多实体集合指标，供算法与评估入口导入。
+# 阅读建议：节点指标看 PlanetAlign/metrics/hits.py → hits_ks_scores() 与 PlanetAlign/metrics/mrr.py → mrr_score()，同分排名在 PlanetAlign/metrics/ranking.py → pairwise_ranks()；实体指标看 PlanetAlign/metrics/many_to_many.py → many_to_many_scores()。
+
 r"""Utility package for computing evaluation metrics for network aligment."""
 
 import copy
 
 from .hits import *
 from .mrr import *
-from .metrics_ACS import acs_score, concentration_accuracy_score
+from .ranking import mean_rank_score, pairwise_ranks, rank_diagnostics
 from .metrics_MSF1 import macro_f1_score, macro_set_f1
 from .metrics_Micro_SF1 import global_set_f1, micro_f1_score
-from .metrics_m2m_EGS import egs_score, egs_weighted_score, m2m_egs_score
-from .metrics_m2m_SGS import m2m_sgs_score, sgs_score, sgs_weighted_score
+from .metrics_AUCS import aucs_score, weighted_aucs_score
+from .metrics_AUIS import auis_score, weighted_auis_score
 from .many_to_many import (
     DEFAULT_MANY_TO_MANY_METRICS,
     many_to_many_scores,
-    pred_entities_from_similarity,
-    similarity_to_pred_entities,
 )
 
 __all__ = [
     'hits_ks_scores',
     'mrr_score',
-    'acs_score',
+    'mean_rank_score',
+    'pairwise_ranks',
+    'rank_diagnostics',
     'macro_f1_score',
     'micro_f1_score',
-    'sgs_score',
-    'sgs_weighted_score',
-    'egs_score',
-    'egs_weighted_score',
-    'concentration_accuracy_score',
+    'auis_score',
+    'weighted_auis_score',
+    'aucs_score',
+    'weighted_aucs_score',
     'macro_set_f1',
     'global_set_f1',
-    'm2m_sgs_score',
-    'm2m_egs_score',
     'DEFAULT_MANY_TO_MANY_METRICS',
     'many_to_many_scores',
-    'similarity_to_pred_entities',
-    'pred_entities_from_similarity',
 ]
 
 classes = copy.copy(__all__)

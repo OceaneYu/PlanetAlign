@@ -1,3 +1,8 @@
+# 文件作用：实现 M2MAlign，通过可重叠分组与组匹配改善节点相似度矩阵。
+# 数据来源：调用者传入 Dataset，可额外提供基础算法的 init_S；否则 train() 由 RWR 与属性构建 S0。
+# 核心处理：_overlap_cluster() 分组，_group_similarity()、_match_groups() 匹配组，_rebuild_similarity() 回写节点分数。
+# 结果去向：train() 保存并返回 self.S 与日志；这是矩阵改进算法，与 PlanetAlign/m2m/quotient.py 的最终实体解码分开。
+
 """M2MAlign — a group-aware many-to-many graph alignment algorithm.
 
 The algorithm targets the four structural properties of the many-to-many
@@ -40,6 +45,7 @@ from PlanetAlign.algorithms.base_model import BaseModel
 Cluster = Dict[int, float]  # node_id -> membership weight in [0, 1]
 
 
+# 功能：维护分组、组匹配和节点矩阵平滑参数，入口是 train()。
 class M2MAlign(BaseModel):
     """Group-aware many-to-many alignment.
 
@@ -101,9 +107,12 @@ class M2MAlign(BaseModel):
         self.base = base
         self.smooth_source = smooth_source
 
+    # 输入来源：Dataset 的图和训练锚点用于特征，init_S 可由调用者提供其他算法矩阵，不在本函数中训练其他算法。
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+    # 核心思路：准备基础 S0，迭代生成重叠组、计算组分数和结构奖励，再提升同组节点匹配分数。
+    # 输出结果：返回改进后的节点矩阵 self.S 与日志，不直接返回 EntityMap。
     def train(self,
               dataset: Dataset,
               gids: Union[List[int], Tuple[int, ...]],
@@ -203,6 +212,7 @@ class M2MAlign(BaseModel):
     # ------------------------------------------------------------------
     # Stage A — base embedding
     # ------------------------------------------------------------------
+    # 功能：组合相对训练锚点的 RWR 与可选属性，供 train() 构造基础分数和分组证据。
     def _build_embedding(self,
                          graph,
                          landmarks: torch.Tensor,
@@ -220,6 +230,7 @@ class M2MAlign(BaseModel):
     # ------------------------------------------------------------------
     # Stage B — overlapping intra-graph clustering
     # ------------------------------------------------------------------
+    # 功能：从相邻高相似节点组成主分组，再按成员与组中心相似度加入带权重的重叠成员。
     def _overlap_cluster(self,
                          graph,
                          emb: torch.Tensor,
@@ -320,6 +331,7 @@ class M2MAlign(BaseModel):
     # ------------------------------------------------------------------
     # Stage C — group-to-group matching
     # ------------------------------------------------------------------
+    # 功能：按组成员权重汇总 S，得到每对源组与目标组的分数。
     def _group_similarity(self,
                           S: torch.Tensor,
                           clusters1: List[Cluster],
@@ -348,6 +360,7 @@ class M2MAlign(BaseModel):
         denom = torch.sqrt(size1.unsqueeze(1) * size2.unsqueeze(0)).clamp(min=1e-9)
         return numer / denom
 
+    # 功能：根据两组外部邻居的匹配情况增强组分数，供 _match_groups() 选择。
     def _apply_structural_bonus(self,
                                 group_sim: torch.Tensor,
                                 clusters1: List[Cluster],
@@ -380,6 +393,7 @@ class M2MAlign(BaseModel):
 
         return group_sim * (1.0 + self.lambda_struct * bonus.clamp(min=0.0))
 
+    # 功能：先做 Hungarian 主匹配，再按阈值与设置扩展组对应，返回组编号对列表。
     def _match_groups(self, group_sim: torch.Tensor) -> List[Tuple[int, int, float]]:
         if group_sim.numel() == 0:
             return []
@@ -426,6 +440,8 @@ class M2MAlign(BaseModel):
     # ------------------------------------------------------------------
     # Stage D — similarity reweighting via cluster-max smoothing
     # ------------------------------------------------------------------
+    # 核心思路：向同组成员传播高分匹配并与 S0 混合，矩阵平滑不降低基础分数。
+    # 输出结果：返回下一轮 S 或最终节点匹配矩阵。
     def _rebuild_similarity(self,
                             S0: torch.Tensor,
                             clusters1: List[Cluster],
@@ -438,8 +454,8 @@ class M2MAlign(BaseModel):
         Symmetrically for source-side clustering.  This addresses the core
         failure of 1-1 algorithms on many-to-many data: good node-level
         scores stay high, but all cluster mates get lifted to the cluster's
-        best score so that ``similarity_to_pred_entities`` picks up the full
-        target group when querying with a source group.
+        best score so that a downstream group-aware readout can recover the
+        full target group.
 
         When ``matches`` is non-empty the group-matching signal is layered
         on top as an *additional* lift, restricted to matched (C1, C2) pairs
@@ -471,9 +487,8 @@ class M2MAlign(BaseModel):
             S_smooth[:, idx] = torch.maximum(current, new_cols)
 
         # --- Source-side cluster smoothing (lifts cluster mates in rows). ---
-        # Off by default: metrics already receive the true source group via
-        # ``gt_entities``, and smoothing across wrongly-merged source nodes
-        # can flatten the S0 signal.  Keep as an opt-in for symmetry.
+        # Off by default: smoothing across wrongly merged source nodes can
+        # flatten the S0 signal. Keep as an opt-in for symmetry.
         if self.smooth_source:
             for c in clusters1:
                 idx = torch.tensor(list(c.keys()), dtype=torch.long, device=S0.device)

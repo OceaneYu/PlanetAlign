@@ -1,6 +1,12 @@
+# 文件作用：按当前嵌入和指定采样策略生成 NeXtAlign 的负例节点。
+# 数据来源：PlanetAlign/algorithms/nextalign/main.py → NeXtAlign.train() 传入嵌入、节点编号映射与批次节点。
+# 结果去向：negative_sampling_exact() 返回负例与概率，供 PlanetAlign/algorithms/nextalign/model.py → Model.loss() 的训练样本使用。
+
 import numpy as np
 
 
+# 核心思路：在本图或另一侧候选中计算嵌入分数与采样概率，再按策略抽取负例。
+# 输出结果：负例编号数组和概率，不更新嵌入。
 def negative_sampling_exact(x, N_negs, node1, node_mapping, target_dist_name, graph_name, removed=0, node_mapping2=None):
     """
     Proposed sampling in NextAlign.

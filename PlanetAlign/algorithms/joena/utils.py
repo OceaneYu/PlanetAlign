@@ -1,6 +1,12 @@
+# 文件作用：提供 JOENA 使用的稳定 Sinkhorn 迭代，将匹配代价转换为传输权重。
+# 数据来源：PlanetAlign/algorithms/joena/model.py → FusedGWLoss.forward() 传入节点代价、两侧结构与参数。
+# 结果去向：sinkhorn_stable() 返回 S，交回损失函数计算训练目标。
+
 import torch
 
 
+# 核心思路：交替更新行列缩放变量，用减去最小值的 soft-min 减少指数运算的数值问题。
+# 输出结果：两侧均匀权重约束下的节点传输矩阵。
 def sinkhorn_stable(inter_c, intra_c1, intra_c2, threshold_lambda=0, in_iter=5, out_iter=10, gw_weight=20, gamma_p=1e-2,
                     dtype=torch.float32, device='cpu'):
     n1, n2 = inter_c.shape

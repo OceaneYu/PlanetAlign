@@ -1,3 +1,9 @@
+# 文件作用：实现 PARROT，利用图上位置、可选节点属性和训练节点对，计算两图节点的配对分数。
+# 数据来源：PlanetAlign/m2m/base.py → train_base_S() 将实验入口加载的 Dataset 传给 PARROT.train()。
+# 核心依赖：PlanetAlign/utils/rwr.py → get_batch_rwr_scores() 描述图上位置，PlanetAlign/utils/distance.py → get_normalized_neg_exp_dist() 比较向量。
+# 结果去向：train() 返回 S 和日志、保存 self.S；PlanetAlign/m2m/base.py → _extract_s() 取矩阵交回入口。
+# 阅读建议：先看 train() 调用哪两个计算函数及返回什么；内部迭代可留到 CODE_MAP_DETAILS.md 再读。
+
 from typing import List, Tuple, Union
 import time
 import torch
@@ -13,6 +19,7 @@ from PlanetAlign.metrics import hits_ks_scores, mrr_score
 from .base_model import BaseModel
 
 
+# 功能：保存 PARROT 的匹配代价权重与迭代参数，公共参数含义见原有文档。
 class PARROT(BaseModel):
     """OT-based method PARROT for pairwise network alignment.
     PARROT is proposed by the paper "`PARROT: Position-Aware Regularized Optimal Transport for Network Alignment. <https://dl.acm.org/doi/abs/10.1145/3543507.3583357>`_"
@@ -57,6 +64,9 @@ class PARROT(BaseModel):
         self.lambda_n = lambda_n
         self.lambda_a = lambda_a
 
+    # 输入来源：PlanetAlign/m2m/base.py → train_base_S() 或调用者传入已加载的 Dataset 和图编号。
+    # 核心思路：get_transport_cost() 算出配对代价，con_prox_pt_opt() 利用这些代价反复调整节点分数。
+    # 输出结果：返回 S 和日志给调用方；S 表示节点配对强弱，还不是节点组的预测。
     def train(self,
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],
@@ -110,6 +120,9 @@ class PARROT(BaseModel):
 
         return S, logger
     
+    # 输入来源：train() 传入图、匹配代价、训练节点对和日志对象。
+    # 核心思路：反复调整 S，让配对分数同时考虑节点信息、图结构和训练锚点。
+    # 输出结果：保存 self.S 并返回矩阵和日志；test_pairs 只用于每轮指标记录，不参与分数更新。
     def con_prox_pt_opt(self, graph1, graph2, cross_dist, intra_dist1, intra_dist2, inner_iters, outer_iters, anchor_links, test_pairs, logger, cost_time, process, verbose):
         n1, n2 = graph1.num_nodes, graph2.num_nodes
         infer_time = cost_time
@@ -213,6 +226,9 @@ class PARROT(BaseModel):
         self.S = S
         return S, logger
 
+    # 输入来源：train() 传入两图、训练节点对和计算参数。
+    # 功能：用 RWR 表示节点相对锚点的位置，结合可选属性与边，算出跨图和各图内部的匹配代价。
+    # 输出结果：这些代价交给 con_prox_pt_opt()，帮助它调整 S。
     def get_transport_cost(self, graph1, graph2, anchor_links, max_iters_sep_rwr, max_iters_prod_rwr, use_attr, verbose):
         # Compute position-aware cross-network transport cost
         if verbose:
@@ -263,6 +279,8 @@ class PARROT(BaseModel):
 
         return cross_dist, intra_dist1, intra_dist2
 
+    # 功能：用两图的归一化邻接矩阵传播跨图代价，直到变化足够小或达到迭代上限。
+    # 输出结果：更新后的跨图代价交回 get_transport_cost()。
     def get_product_rwr_mat(self, adj1, adj2, in_cross_dist, max_iters=50, tol=1e-2):
         row_norm_adj1 = F.normalize(adj1.to(self.device), p=1, dim=1)
         row_norm_adj2 = F.normalize(adj2.to(self.device), p=1, dim=1)

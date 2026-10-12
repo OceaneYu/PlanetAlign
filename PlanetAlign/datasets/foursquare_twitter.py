@@ -1,3 +1,7 @@
+# 文件作用：提供内置一对一图数据集入口；FoursquareTwitter 读取 foursquare-twitter.pt。
+# 核心依赖：PlanetAlign/datasets/utils.py → download_file_from_google_drive() 可选下载，PlanetAlign/data/dataset.py → Dataset 完成实际加载。
+# 结果去向：创建的对象由调用者传给算法 train()；本文件不会自动启动训练。
+
 from typing import Union, Optional
 from pathlib import Path
 import os
@@ -7,6 +11,7 @@ from PlanetAlign.data import Dataset
 from .utils import download_file_from_google_drive
 
 
+# 功能：提供这个内置基准的创建入口，图统计与含义见保留的类文档。
 class FoursquareTwitter(Dataset):
     """
     A pair of online social networks, Foursquare and Twitter. Nodes represent users and an edge exists between
@@ -35,6 +40,8 @@ class FoursquareTwitter(Dataset):
           - 0
           - 0
     """
+    # 输入来源：调用者指定 root；download=True 时下载 foursquare-twitter.pt，否则要求文件已存在。
+    # 流程位置：检查文件存在后调用 PlanetAlign/data/dataset.py → Dataset.__init__() 加载图并划分锚点。
     def __init__(self,
                  root: Union[str, Path],
                  download: Optional[bool] = False,
@@ -53,5 +60,6 @@ class FoursquareTwitter(Dataset):
 
         super(FoursquareTwitter, self).__init__(root=root, name='foursquare-twitter', train_ratio=train_ratio, dtype=dtype, seed=seed)
 
+    # 功能：只检查 root/foursquare-twitter.pt 是否存在；内容校验由父类 Dataset._validate() 执行。
     def _check_integrity(self, root):
         return os.path.exists(os.path.join(root, 'foursquare-twitter.pt'))

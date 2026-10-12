@@ -1,3 +1,8 @@
+# 文件作用：比较 PARROT 与三个 JOENA 分支的缓存矩阵平均，检查训练锚点能否选出更好的结果。
+# 数据来源：main() 加载 Dataset，ensemble_S() 读取 scripts/run_quotient_compare.py 生成的三个 full-anchor 缓存。
+# 核心依赖：PlanetAlign/m2m/base.py 的基础训练与矩阵处理；PlanetAlign/m2m/quotient.py 的预测、锚点一致性和评分。
+# 结果去向：各数据集与种子的比较记录写入 --out，供 scripts/aggregate_unified_grid.py 读取。
+
 """Head-to-head: PARROT vs the JOENA-family ensemble, arbitrated on anchors.
 
 For each strong-attribute dataset, reconstruct the 3-branch ensemble coupling
@@ -22,8 +27,8 @@ import torch
 
 from PlanetAlign.data import Dataset
 from PlanetAlign.m2m import use_full_anchor_supervision
-from PlanetAlign.m2m_base import train_base_S, arbitrate_sharpen
-from PlanetAlign.m2m_quotient import (entity_anchor_agreement, evaluate_quotient_blind,
+from PlanetAlign.m2m.base import train_base_S, arbitrate_sharpen
+from PlanetAlign.m2m.quotient import (entity_anchor_agreement, evaluate_quotient_blind,
                                       quotient_decode)
 from PlanetAlign.utils import get_anchor_pairs
 
@@ -32,6 +37,7 @@ CACHE = Path("logs/m2m_diag/S_cache")
 STRONG = ["douban_m2m", "cora_m2m", "airport_m2m", "pems08_m2m", "ppi_m2m"]
 
 
+# 输出结果：三个分支缓存齐全时返回平均矩阵，否则返回 None；不在这里训练缺失分支。
 def ensemble_S(dataset_name: str, seed: int) -> torch.Tensor | None:
     """Mean of the 3 cached branch couplings (joena, joena-pc, joena-pc-gm), _fa."""
     tags = ["", "_pc-u1.0-a1.0-t0.1", "_pc-u1.0-a1.0-t0.1-gm0.5"]
@@ -44,6 +50,7 @@ def ensemble_S(dataset_name: str, seed: int) -> torch.Tensor | None:
     return torch.stack(mats).mean(dim=0)
 
 
+# 功能：按选项做矩阵温度选择，预测实体并分别计算锚点一致性与真实实体 MicroF1。
 def score(S, g_src, g_tgt, anchors, gt, has_attr):
     S_best, T, _ = arbitrate_sharpen(S, g_src, g_tgt, anchors, use_attr=has_attr)
     pred, _ = quotient_decode(S_best, g_src, g_tgt, use_attr=has_attr, anchors=anchors)
@@ -53,6 +60,7 @@ def score(S, g_src, g_tgt, anchors, gt, has_attr):
     return corrected, mf1, T
 
 
+# 功能：逐数据集/种子训练 PARROT，加载集成缓存，用 score() 比较并保存结果。
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--root", type=Path, default=Path("data/m2m_no_overlap"))

@@ -1,3 +1,8 @@
+# 文件作用：实现 IONE，通过节点及邻居上下文嵌入学习两图节点的对应关系。
+# 数据来源：scripts/run_m2m_experiments.py → evaluate_algorithm() 创建 IONE 并传入 Dataset。
+# 核心处理：IONE.train() 调用 IONEUpdate 采样边与负例，利用训练锚点关联两侧嵌入更新。
+# 结果去向：train() 返回匹配矩阵与日志，实验入口用 _extract_s() 提取后交给多对多评估。
+
 from typing import List, Tuple, Union
 import time
 import torch
@@ -13,6 +18,7 @@ from PlanetAlign.utils import get_anchor_pairs
 from .base_model import BaseModel
 
 
+# 功能：只用结构与训练锚点训练两侧嵌入，不使用节点属性。
 class IONE(BaseModel):
     """Embedding-based method IONE for pairwise plain network alignment.
     IONE is proposed by the paper "`Aligning Users Across Social Networks Using Network Embedding <https://www.ijcai.org/Proceedings/16/Papers/254.pdf>`_"
@@ -34,6 +40,9 @@ class IONE(BaseModel):
         self.out_dim = out_dim
         self.base_epochs = 100000
 
+    # 输入来源：dataset.pyg_graphs 提供图边，训练锚点约束两侧节点身份，测试锚点供日志评估。
+    # 核心思路：各建一个 IONEUpdate，按训练锚点共享对应关系，迭代采样并更新嵌入。
+    # 输出结果：用归一化嵌入内积构造 S，返回矩阵与日志。
     def train(self,
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],
@@ -117,6 +126,7 @@ class IONE(BaseModel):
         return S, logger
 
 
+# 功能：维护单图的节点向量、输入/输出上下文向量与边/负例采样表。
 class IONEUpdate:
     def __init__(self,
                  graph: Data,
@@ -154,6 +164,7 @@ class IONEUpdate:
         self.init_neg_table()
         print(f'{self.graph.name}: negative table initialized in {time.time() - start:.2f} seconds')
 
+    # 功能：采样真实边与负例，调用 update()/update_reverse() 修改节点和上下文嵌入。
     def forward(self, i, iter_count, two_order_embeddings, two_order_emb_context_input, two_order_emb_context_output,
                 anchors, same_network=True):
         vec_error = torch.zeros(self.dimension, dtype=self.dtype).to(self.device)
@@ -209,6 +220,7 @@ class IONEUpdate:
         else:
             self.embeddings[uid_1] += vec_error
 
+    # 功能：为边采样建立别名表，使后续 sample_edge() 可快速按权重抽样。
     def init_alias_table(self):
         self.edge_weight = torch.ones(self.graph.num_edges, dtype=self.dtype)
         norm_prob = F.normalize(self.edge_weight, p=1, dim=0) * self.graph.num_edges
@@ -247,6 +259,7 @@ class IONEUpdate:
         k = int(len(self.edge_weight) * rand1)
         return k if rand2 < self.prob[k] else self.alias[k]
 
+    # 功能：按节点度数的 0.75 次方构造负样本节点表，供 forward() 采样。
     def init_neg_table(self):
         total_sum = torch.sum(self.vertex ** 0.75).cpu().item()
 
@@ -270,6 +283,7 @@ class IONEUpdate:
             self.neg_table.append(current)
         self.neg_table = torch.tensor(self.neg_table, dtype=torch.int64).to(self.vertex.device)
 
+    # 功能：按正负样本标签计算向量更新量，用于节点与上下文的优化。
     def update(self, vec_u, vec_v, label, source, target, two_order_embeddings, two_order_emb_context,
                anchors, same_network=True):
         if source in anchors:

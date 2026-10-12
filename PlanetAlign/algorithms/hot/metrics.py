@@ -1,8 +1,13 @@
+# 文件作用：评估 HOT 的多图匹配张量，分别检查成对节点与完整多图对应的排名。
+# 数据来源：PlanetAlign/algorithms/hot/main.py → HOT.train() 传入簇张量、节点编号映射和测试锚点。
+# 阅读建议：先读 multi_align_hits_ks_scores()/multi_align_mrr_score()，再看从指定源图查询的辅助函数。
+
 from typing import List, Tuple, Union
 import numpy as np
 import torch
 
 
+# 功能：遍历各源图，汇总成对命中与高阶完整对应命中，返回两套 Hits@K。
 def multi_align_hits_ks_scores(sim_tensor_dict: dict[int, torch.Tensor],
                                cluster_nodes_dict: dict[int, List[torch.Tensor]],
                                test_links: torch.Tensor,
@@ -29,6 +34,7 @@ def multi_align_hits_ks_scores(sim_tensor_dict: dict[int, torch.Tensor],
     return pairwise_hits_ks, high_order_hits_ks
 
 
+# 功能：遍历各源图计算完整对应的 MRR，再按设置汇总。
 def multi_align_mrr_score(sim_tensor_dict: dict[int, torch.Tensor],
                           cluster_nodes_dict: dict[int, List[torch.Tensor]],
                           test_links: torch.Tensor,
@@ -44,6 +50,7 @@ def multi_align_mrr_score(sim_tensor_dict: dict[int, torch.Tensor],
     return mrr
 
 
+# 核心思路：在真实源节点所属簇的张量切片中排序，检查各目标节点单独或一起命中。
 def multi_align_hits_ks_scores_from_src(sim_tensor_dict: dict[int, torch.Tensor],
                                         cluster_nodes_dict: dict[int, List[torch.Tensor]],
                                         test_links: torch.Tensor,
@@ -102,6 +109,7 @@ def multi_align_hits_ks_scores_from_src(sim_tensor_dict: dict[int, torch.Tensor]
     return pairwise_hits_ks, high_order_hits_ks
 
 
+# 功能：从指定源图查找完整真实节点组合的名次，计算倒数均值。
 def mutli_align_mrr_score_from_src(sim_tensor_dict: dict[int, torch.Tensor],
                                    cluster_nodes_dict: dict[int, List[torch.Tensor]],
                                    test_links: torch.Tensor,

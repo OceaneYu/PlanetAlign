@@ -1,12 +1,16 @@
-"""Unit tests for PlanetAlign.m2m_quotient — one test per design claim."""
+# 文件作用：验证自适应阈值、防串联、候选选择、组唯一性和小图端到端行为。
+# 核心依赖：PlanetAlign/m2m/quotient.py 的分组、组匹配与实体解码函数；样例在本文件构造，不需完整基准。
+# 阅读建议：先读测试类的准备数据和对应断言，可用 python -m unittest discover -s tests 运行。
+
+"""Unit tests for PlanetAlign.m2m.quotient — one test per design claim."""
 
 import unittest
 
 import torch
 from torch_geometric.data import Data
 
-from PlanetAlign.m2m_blind import discover_groups_by_profile
-from PlanetAlign.m2m_quotient import (
+from PlanetAlign.m2m.blind import discover_groups_by_profile
+from PlanetAlign.m2m.quotient import (
     evict_outliers,
     global_candidate_pairs,
     greedy_match,
@@ -31,6 +35,7 @@ def _graph(num_nodes, edges):
     return Data(edge_index=ei, num_nodes=num_nodes)
 
 
+# 功能：检查双峰样本的阈值与退化样本的备用值。
 class OtsuThresholdTest(unittest.TestCase):
     def test_separates_bimodal_sample(self):
         vals = torch.cat([torch.full((50,), 0.02), torch.full((50,), 0.45)])
@@ -43,6 +48,7 @@ class OtsuThresholdTest(unittest.TestCase):
         self.assertEqual(otsu_threshold(torch.zeros(3)), 0.1)
 
 
+# 功能：构造 A 接近 B、B 接近 C 但 A 不接近 C 的样例，比较普通合并与组中心门控。
 class AntiChainingTest(unittest.TestCase):
     """A~B and B~C pass the edge gate, but A and C are dissimilar."""
 
@@ -67,6 +73,7 @@ class AntiChainingTest(unittest.TestCase):
         self.assertEqual(sizes, [1, 2])
 
 
+# 功能：两源组都偏好同一目标，检查全局匹配避免重复并提高总分。
 class HungarianUniquenessTest(unittest.TestCase):
     """Two source groups both prefer target 0; greedy stacks, Hungarian doesn't."""
 
@@ -84,6 +91,7 @@ class HungarianUniquenessTest(unittest.TestCase):
         self.assertEqual(m, {0: 0, 1: 1})  # total 1.6 > greedy-unique 1.4
 
 
+# 功能：检查正确分组、全部合并与全单节点分组的轮廓对比评分。
 class PartitionContrastTest(unittest.TestCase):
     """The blind arbiter prefers the partition matching the profile structure."""
 
@@ -98,6 +106,7 @@ class PartitionContrastTest(unittest.TestCase):
         self.assertEqual(singles, float("-inf"))
 
 
+# 功能：检查随机对阈值的维度变化与重复行退化保护。
 class NullThresholdTest(unittest.TestCase):
     """Random-pair null calibration and its degeneracy guard."""
 
@@ -116,6 +125,7 @@ class NullThresholdTest(unittest.TestCase):
         self.assertIsNone(null_threshold(profiles, num_null=2000))
 
 
+# 功能：检查不相邻同组候选能被提出，以及共同最高分列过载时的过滤。
 class GlobalCandidateTest(unittest.TestCase):
     """Attr-bucket x profile gates propose non-adjacent siblings; hubs excluded."""
 
@@ -144,11 +154,12 @@ class GlobalCandidateTest(unittest.TestCase):
         self.assertEqual(u.numel(), 0)
 
 
+# 功能：检查训练节点对落入同一预测实体的比例及随机命中扣除。
 class EntityAnchorAgreementTest(unittest.TestCase):
     """Aligner-level arbitration criterion on a final entity map."""
 
     def test_counts_anchor_pairs_landing_in_same_entity(self):
-        from PlanetAlign.m2m_quotient import entity_anchor_agreement
+        from PlanetAlign.m2m.quotient import entity_anchor_agreement
         pred = {"p0": {"src": [0, 1], "tgt": [5]}, "p1": {"src": [2], "tgt": [6, 7]}}
         anchors = torch.tensor([[0, 5], [2, 6], [1, 9]])  # 2 of 3 agree
         corr, raw = entity_anchor_agreement(pred, anchors, n2=10)
@@ -156,6 +167,7 @@ class EntityAnchorAgreementTest(unittest.TestCase):
         self.assertLess(corr, raw)  # chance term subtracted
 
 
+# 功能：在轮廓无区分力时，用足量训练锚点检查属性分组候选被选择。
 class AnchorArbiterTest(unittest.TestCase):
     """When profiles carry no group signal, anchors + Occam pick the attribute
     partition (the Cora failure mode)."""
@@ -174,6 +186,7 @@ class AnchorArbiterTest(unittest.TestCase):
         self.assertEqual(info["evidence"][0][0], "attr")
 
 
+# 功能：用手工 S 和两张小图检查分组、组分数及最终多对多实体。
 class EndToEndToyTest(unittest.TestCase):
     """Perfect recovery on a toy M2M instance with block-structured S."""
 
@@ -188,6 +201,7 @@ class EndToEndToyTest(unittest.TestCase):
         S[3, 2] = 0.8
         self.S = S
 
+    # 功能：直接调用 quotient_decode()，断言预期源节点组及其目标节点集合。
     def test_quotient_decode_recovers_entities(self):
         pred, info = quotient_decode(self.S, self.g1, self.g2, max_iters=2)
         by_src = {tuple(sorted(v["src"])): sorted(v["tgt"]) for v in pred.values()}
@@ -206,11 +220,12 @@ if __name__ == "__main__":
     unittest.main()
 
 
+# 功能：检查 JOENA-PC 的组均匀总权重与节点均匀退化情形。
 class GroupUniformMarginalTest(unittest.TestCase):
     """Group-level Sinkhorn marginals: one unit per group, blended with uniform."""
 
     def test_mass_sums_to_one_and_groups_get_equal_mass(self):
-        from PlanetAlign.m2m_contrastive import _group_uniform_marginal
+        from PlanetAlign.m2m.contrastive import _group_uniform_marginal
         groups = [[0, 1, 2], [3], [4, 5]]
         m = _group_uniform_marginal(groups, n=6, rho=1.0, dtype=torch.float32)
         self.assertAlmostEqual(float(m.sum()), 1.0, places=6)
@@ -218,11 +233,12 @@ class GroupUniformMarginalTest(unittest.TestCase):
             self.assertAlmostEqual(float(m[torch.tensor(g)].sum()), 1 / 3, places=6)
 
     def test_rho_zero_is_uniform(self):
-        from PlanetAlign.m2m_contrastive import _group_uniform_marginal
+        from PlanetAlign.m2m.contrastive import _group_uniform_marginal
         m = _group_uniform_marginal([[0, 1], [2]], n=3, rho=0.0, dtype=torch.float32)
         self.assertTrue(torch.allclose(m, torch.full((3,), 1 / 3)))
 
 
+# 功能：比较均值汇总与覆盖汇总在一对多组上的分数差异。
 class CoverageScoreTest(unittest.TestCase):
     """Bidirectional coverage: scale-free containment in [0, 1]."""
 
@@ -249,6 +265,7 @@ class CoverageScoreTest(unittest.TestCase):
         self.assertGreater(float(Tc[0, 0]), float(Tc[0, 1]))   # coverage picks right
 
 
+# 功能：检查异常成员剔除与避免整个组被拆散的保护。
 class EvictOutlierTest(unittest.TestCase):
     """Merge-split refinement: leave-self-out eviction."""
 
@@ -267,6 +284,7 @@ class EvictOutlierTest(unittest.TestCase):
         self.assertEqual(sorted(sorted(g) for g in groups), [[0, 1]])
 
 
+# 功能：检查组邻接归一化与邻居支持对组匹配分数的增强。
 class NeighborConsistencyTest(unittest.TestCase):
     """Quotient-level consistency: neighbor support raises a match's score."""
 

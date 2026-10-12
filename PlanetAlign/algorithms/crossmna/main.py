@@ -1,3 +1,8 @@
+# 文件作用：实现 CrossMNA，利用训练锚点关联多张图，学习节点与图层表示。
+# 数据来源：调用者或 scripts/run_m2m_experiments.py → evaluate_algorithm() 将 Dataset 传给 CrossMNA.train()。
+# 核心依赖：PlanetAlign/utils/anchors.py → merge_pyg_graphs_on_anchors()；PlanetAlign/algorithms/crossmna/model.py → MultiNetworkEmb 与 PlanetAlign/algorithms/crossmna/sampler.py → AliasSampler。
+# 结果去向：返回按图编号组织的嵌入字典和日志，由实验入口 _extract_s() 适配成两图矩阵。
+
 from typing import List, Tuple, Union
 import torch
 import numpy as np
@@ -16,6 +21,7 @@ from .model import MultiNetworkEmb
 from .sampler import AliasSampler
 
 
+# 功能：提供多图结构嵌入训练接口，训练节点的身份通过锚点映射关联。
 class CrossMNA(BaseModel):
     """Embedding-based method CrossMNA for plain multi-network alignment.
     CrossMNA is proposed by the paper: "`Cross-Network Embedding for Multi-Network Alignment. <https://doi.org/10.1145/3308558.3313499>`_"
@@ -57,6 +63,9 @@ class CrossMNA(BaseModel):
         self.graph_emb_dims = graph_emb_dims
         self.lr = lr
 
+    # 输入来源：Dataset 的选定多图与训练锚点建立共享身份，真实边和采样节点构成正负训练对。
+    # 核心思路：建立跨图节点编号映射，按真实边与负样本训练 MultiNetworkEmb，并映射回各原图节点。
+    # 输出结果：返回 out_embs_dict、logger；不是直接的 S。
     def train(self,
               dataset: Dataset,
               gids: Union[List[int], Tuple[int, ...]],
@@ -162,6 +171,7 @@ class CrossMNA(BaseModel):
         
         return out_embs_dict, logger
                         
+    # 功能：为每张图组合真实边、采样负节点和图编号，再打乱拆成训练批次。
     def _generate_samples(self, graphs, alias_samplers_list):
         all_edges = torch.empty((2, 0), dtype=torch.int64)
         all_gid_vec = torch.empty((0,), dtype=torch.int)
@@ -200,6 +210,7 @@ class CrossMNA(BaseModel):
 
         return batched_samples
 
+    # 功能：按度数的 0.75 次方构造节点负例分布并创建 AliasSampler。
     @staticmethod
     def _init_sampler(graph):
         node_positive_distribution = degree(graph.edge_index[0], num_nodes=graph.num_nodes) ** 0.75

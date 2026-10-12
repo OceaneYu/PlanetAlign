@@ -1,9 +1,13 @@
+# 文件作用：验证属性分组、组间贪心匹配与小图完整评估。
+# 核心依赖：PlanetAlign/m2m/blind.py → discover_groups()/decode_entity_map()/evaluate_blind()；样例在本文件构造，不需完整基准。
+# 阅读建议：先读测试类的准备数据和对应断言，可用 python -m unittest discover -s tests 运行。
+
 import unittest
 
 import torch
 from torch_geometric.data import Data
 
-from PlanetAlign.m2m_blind import discover_groups, decode_entity_map, blind_predict, evaluate_blind
+from PlanetAlign.m2m.blind import discover_groups, decode_entity_map, blind_predict, evaluate_blind
 
 
 def _two_triangles_graph(offset_attr: float) -> Data:
@@ -17,6 +21,7 @@ def _two_triangles_graph(offset_attr: float) -> Data:
     return Data(num_nodes=6, edge_index=edge_index, x=x)
 
 
+# 功能：用两个属性不同的三角形及块状矩阵说明分组与解码的输入/输出。
 class M2MBlindTest(unittest.TestCase):
     def test_discover_groups_recovers_attr_cliques(self):
         g = _two_triangles_graph(0.0)
@@ -24,6 +29,7 @@ class M2MBlindTest(unittest.TestCase):
         sizes = sorted(len(c) for c in groups)
         self.assertEqual(sizes, [3, 3])
 
+    # 功能：给定两侧组与高分对角块，确认每个源组选择对应目标组。
     def test_decode_matches_best_target_group(self):
         # 2 src groups, 2 tgt groups; identity-ish similarity favours matching
         # group A->A, B->B.
@@ -49,7 +55,7 @@ class M2MBlindTest(unittest.TestCase):
         scores, pred = evaluate_blind(S, gt, g_src, g_tgt, return_predictions=True)
         # discovery is structural/attribute only; prediction recovers the cliques
         self.assertTrue(all(len(v["src"]) == 3 for v in pred.values() if v["src"]))
-        self.assertGreater(scores["MSF1"], 0.99)
+        self.assertGreater(scores["Macro Set-F1"], 0.99)
 
 
 if __name__ == "__main__":

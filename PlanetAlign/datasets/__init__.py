@@ -1,3 +1,6 @@
+# 文件作用：集中导出内置基准类，如 PlanetAlign/datasets/douban.py → Douban。
+# 阅读建议：各类 __init__() 负责可选下载和文件检查，实际读取 .pt 由 PlanetAlign/data/dataset.py → Dataset 完成。
+
 import copy
 
 from .phone_email import PhoneEmail

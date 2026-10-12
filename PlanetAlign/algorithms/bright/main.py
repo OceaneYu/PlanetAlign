@@ -1,3 +1,8 @@
+# 文件作用：实现 BRIGHT，利用锚点结构位置和可选属性学习跨图节点嵌入。
+# 数据来源：调用者或 scripts/run_m2m_experiments.py → evaluate_algorithm() 将 Dataset 传给 BRIGHT.train()。
+# 核心依赖：PlanetAlign/utils/rwr.py → get_batch_rwr_scores()；PlanetAlign/algorithms/bright/model.py → BrightUNet、BrightANet、MarginalRankingLoss。
+# 结果去向：返回两侧嵌入与日志，PlanetAlign/m2m/base.py → _extract_s() 将嵌入转为余弦矩阵。
+
 import time
 from typing import List, Tuple, Union
 import torch
@@ -13,6 +18,7 @@ from PlanetAlign.algorithms.base_model import BaseModel
 from .model import BrightUNet, BrightANet, MarginalRankingLoss
 
 
+# 功能：保存结构特征、嵌入维度、负例和优化参数，入口为 train()。
 class BRIGHT(BaseModel):
     """Embedding-based method BRIGHT for pairwise network alignment.
     BRIGHT is proposed by the paper "`BRIGHT: A Bridging Algorithm for Network Alignment. <https://doi.org/10.1145/3442381.3450053>`_"
@@ -48,6 +54,9 @@ class BRIGHT(BaseModel):
         self.margin = margin
         self.lr = lr
 
+    # 输入来源：训练锚点用于 RWR 特征与正对应样本，图属性/边用于可选 GCN 分支，测试锚点用于日志。
+    # 核心思路：按是否使用属性选择 BrightUNet 或 BrightANet，用训练锚点与难负例的排名损失更新网络。
+    # 输出结果：返回 out1、out2 和日志，不直接返回节点相似度矩阵。
     def train(self,
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],

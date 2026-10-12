@@ -1,3 +1,8 @@
+# 文件作用：实现 NetTrans，通过图压缩、跨图传播与还原学习可匹配的节点表示。
+# 数据来源：调用者或 scripts/run_m2m_experiments.py → evaluate_algorithm() 将 Dataset 传给 NetTrans.train()。
+# 核心依赖：PlanetAlign/algorithms/nettrans/model.py → NetTransModel；PlanetAlign/algorithms/nettrans/data.py → ContextDataset；PlanetAlign/algorithms/nettrans/sampling.py 的负采样函数。
+# 结果去向：返回两侧嵌入和日志，由实验入口 _extract_s() 转换为节点分数。
+
 from typing import List, Tuple, Union
 import numpy as np
 import torch.nn.functional as F
@@ -17,6 +22,7 @@ from .data import ContextDataset
 from .sampling import *
 
 
+# 功能：配置层级图变换与上下文训练参数。
 class NetTrans(BaseModel):
     r"""Embedding-based method NetTrans for pairwise network alignment via network transformation.
     NetTrans is proposed by the paper "`NetTrans: Neural Cross-Network Transformation. <https://dl.acm.org/doi/10.1145/3394486.3403141>`_"
@@ -85,6 +91,9 @@ class NetTrans(BaseModel):
         self.min_temperature = min_temperature
         self.anneal_rate = anneal_rate
 
+    # 输入来源：图边与可选属性、训练锚点的 one-hot 特征及邻居上下文样本，均由 Dataset 与本类采样方法提供。
+    # 核心思路：构造属性/锚点特征、平衡邻居样本，经 NetTransModel 压缩与还原图，再优化对齐目标。
+    # 输出结果：返回 emb1、emb2 与日志，不将训练函数返回值直接当成 S。
     def train(self,
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],
@@ -223,6 +232,7 @@ class NetTrans(BaseModel):
 
         return emb1, emb2, logger
 
+    # 功能：对训练锚点采样邻居上下文，供 ContextDataset 组织小批次。
     @staticmethod
     def _sample_anchor_neighbor_pairs(graph, anchors):
         degrees = degree(graph.edge_index[0], num_nodes=graph.num_nodes)
@@ -240,6 +250,7 @@ class NetTrans(BaseModel):
         sampled_context_pairs = sampled_context_pairs[torch.randperm(sampled_context_pairs.size(0))]
         return sampled_context_pairs
 
+    # 功能：构造上下文负采样概率及锚点对应表，供训练循环生成负例。
     def _get_neg_context_prob(self, graph, anchors):
         prob = torch.ones((len(anchors), graph.num_nodes), dtype=self.dtype)
         for i, anchor in enumerate(anchors):

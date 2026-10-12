@@ -1,3 +1,8 @@
+# 文件作用：从多图锚点表提取节点对，构造锚点特征，并支持按锚点合并图。
+# 数据来源：算法 train() 传入 Dataset.train_data；如 PlanetAlign/algorithms/parrot.py → PARROT.train() 调用 get_anchor_pairs()。
+# 结果去向：节点对用于监督训练；merge_pyg_graphs_on_anchors() 的编号映射供 CrossMNA、WLAlign 使用。
+# 阅读建议：先读 get_anchor_pairs()，再按算法需要看特征或合图函数。
+
 from typing import List, Tuple, Union
 from collections import defaultdict
 import numpy as np
@@ -9,6 +14,8 @@ import torch.nn.functional as F
 from PlanetAlign.data import Dataset
 
 
+# 功能：选取 gid1、gid2 两列并过滤缺失节点编号，返回这两张图的已知节点对。
+# 输入来源：调用者传入 train_data 或 test_data；本函数不决定用哪一套锚点。
 def get_anchor_pairs(anchor_links: torch.Tensor,
                      gid1: int,
                      gid2: int):
@@ -35,6 +42,7 @@ def get_anchor_pairs(anchor_links: torch.Tensor,
     return anchor_pairs
 
 
+# 功能：对每对图调用 get_anchor_pairs()，返回以图编号对为键的节点对字典。
 def get_pairwise_anchor_pairs(anchor_links: torch.Tensor) -> dict:
     """
     Get anchor node pairs for all pairs of graphs.
@@ -59,6 +67,7 @@ def get_pairwise_anchor_pairs(anchor_links: torch.Tensor) -> dict:
     return anchor_pairs_dict
 
 
+# 输出结果：返回每个节点相对锚点的 one-hot 特征，供 NetTrans、NeXtAlign 的训练输入使用。
 def get_anchor_embeddings(graph: Data, anchors: torch.Tensor) -> torch.Tensor:
     """
     Generate one-hot anchor embeddings for nodes in a graph based on given anchor nodes.
@@ -83,6 +92,7 @@ def get_anchor_embeddings(graph: Data, anchors: torch.Tensor) -> torch.Tensor:
     return anchor_embeddings
 
 
+# 功能：从锚点出发迭代带重启随机游走，得到节点相对锚点的结构特征。
 def get_rwr_embeddings(graph: Data,
                        anchors: torch.Tensor,
                        restart_prob: float = 0.15,
@@ -135,6 +145,9 @@ def get_rwr_embeddings(graph: Data,
     return batch_rwr_vecs
 
 
+# 输入来源：PlanetAlign/algorithms/crossmna/main.py → CrossMNA.train() 等传入图与训练锚点。
+# 核心思路：把锚点相连的节点共用合并后编号，重建边并汇总可用节点属性。
+# 输出结果：合并图、合并锚点及双向编号映射，供调用者训练并映射回原图。
 def merge_pyg_graphs_on_anchors(pyg_graphs: Union[List[Data], Tuple[Data, ...]],
                                 anchor_links: torch.Tensor) -> Tuple[Data, torch.Tensor, dict, dict]:
     """
@@ -217,6 +230,7 @@ def merge_pyg_graphs_on_anchors(pyg_graphs: Union[List[Data], Tuple[Data, ...]],
     return merged_graph, merged_anchors, id2node_dict, node2id_dict
 
 
+# 功能：按两图节点度数相近程度选出候选节点对，返回启发式锚点而非真实标签。
 def infer_anchors_from_degree(dataset: Dataset, topk_ratio: float = 0.1) -> torch.Tensor:
     """
     Infer anchor node pairs based on degree similarity. The number of anchor pairs is calculated
@@ -258,6 +272,7 @@ def infer_anchors_from_degree(dataset: Dataset, topk_ratio: float = 0.1) -> torc
     return anchors
 
 
+# 功能：按节点属性余弦相似度选高分候选对，供调用者选择是否作为推断锚点。
 def infer_anchors_from_attributes(dataset: Dataset, topk_ratio: float = 0.1) -> torch.Tensor:
     """
     Infer anchor node pairs based on attribute similarity. The number of anchor pairs is calculated

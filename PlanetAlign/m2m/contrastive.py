@@ -1,3 +1,8 @@
+# 文件作用：实现 JOENA-PC 训练变体，让原本过于相似的节点匹配轮廓更容易区分。
+# 数据来源：scripts/run_quotient_compare.py → main() 内部 get_S() 创建 JOENAPC 并传入 Dataset。
+# 核心依赖：PlanetAlign/algorithms/joena/model.py → MLP、FusedGWLoss 和 PlanetAlign/utils/rwr.py → get_batch_rwr_scores()。
+# 结果去向：JOENAPC.train() 返回 S 与日志，入口缓存或组合 S 后传给 PlanetAlign/m2m/quotient.py 的解码函数。
+
 """JOENA-PC: JOENA with symmetry-broken inputs and a profile-contrastive term.
 
 Why this exists (measured chain, see docs/m2m_quotient_align_design.md §5.5):
@@ -49,6 +54,7 @@ from PlanetAlign.metrics import hits_ks_scores, mrr_score
 from PlanetAlign.utils import get_anchor_pairs, get_batch_rwr_scores
 
 
+# 功能：把自身与一跳邻居的属性取均值，供 JOENAPC.train() 添加结构位置特征。
 def _mean_propagated(graph, x: torch.Tensor) -> torch.Tensor:
     """One-hop mean neighbourhood attributes: D^{-1}(A+I) x (dense, small graphs)."""
     n = int(graph.num_nodes)
@@ -85,6 +91,7 @@ def _adjacent_pairs(graph) -> Tuple[torch.Tensor, torch.Tensor]:
 # group one unit of mass (split among members, blended with uniform by ``rho``)
 # removes the k-vs-m mismatch at the group level.
 # ---------------------------------------------------------------------------
+# 功能：用指定两侧节点权重执行 Sinkhorn 迭代，供 _GroupMarginalFusedGWLoss.forward() 计算传输矩阵。
 def _sinkhorn_marginals(inter_c, intra_c1, intra_c2, a, b, threshold_lambda,
                         in_iter, out_iter, gw_weight, gamma_p, dtype, device):
     """Copy of algorithms.joena.utils.sinkhorn_stable with custom marginals."""
@@ -117,12 +124,14 @@ def _sinkhorn_marginals(inter_c, intra_c1, intra_c2, a, b, threshold_lambda,
     return s
 
 
+# 功能：扩展 JOENA 的损失计算，允许训练循环设置非均匀节点权重。
 class _GroupMarginalFusedGWLoss(FusedGWLoss):
     """FusedGWLoss whose Sinkhorn solve uses externally-set marginals."""
 
     def set_marginals(self, a: torch.Tensor, b: torch.Tensor) -> None:
         self._a, self._b = a, b
 
+    # 功能：按当前节点权重求传输矩阵，并组合节点与结构匹配损失供反向传播。
     def forward(self, out1, out2):
         inter_c = torch.exp(-(out1 @ out2.T))
         intra_c1 = torch.exp(-(out1 @ out1.T)) * self.adj1
@@ -145,6 +154,7 @@ class _GroupMarginalFusedGWLoss(FusedGWLoss):
         return w_loss + self.gw_weight * gw_loss + 20, s, self.threshold_lambda
 
 
+# 功能：将每节点均匀权重与每组均匀总权重混合，避免大组自然占据过多权重。
 def _group_uniform_marginal(groups, n: int, rho: float, dtype) -> torch.Tensor:
     """Blend of uniform (1-rho) and one-unit-per-group (rho) node masses."""
     m = torch.full((n,), (1.0 - rho) / n, dtype=dtype)
@@ -156,6 +166,7 @@ def _group_uniform_marginal(groups, n: int, rho: float, dtype) -> torch.Tensor:
     return m
 
 
+# 功能：在 JOENA 基础上增加结构位置输入、轮廓区分损失和可选组级权重。
 class JOENAPC(BaseModel):
     """JOENA + symmetry-broken inputs + profile-contrastive objective.
 
@@ -204,6 +215,7 @@ class JOENAPC(BaseModel):
         self.marginal_warmup = marginal_warmup
 
     # ------------------------------------------------------------------
+    # 功能：采样轮廓对并惩罚过高相似度，供 train() 减少无关节点的重复轮廓。
     def _uniformity(self, profiles: torch.Tensor, gen: torch.Generator) -> torch.Tensor:
         """Mean squared cosine over random profile pairs (push to orthogonal)."""
         n = profiles.shape[0]
@@ -217,6 +229,7 @@ class JOENAPC(BaseModel):
         cos = (p[i[keep]] * p[j[keep]]).sum(dim=1)
         return (cos ** 2).mean()
 
+    # 功能：从相邻节点中选取当前匹配轮廓高度一致的节点对，作为训练中的候选正例。
     @staticmethod
     def _bootstrap_positives(S: torch.Tensor, u: torch.Tensor, v: torch.Tensor,
                              bar: float, cap: int = 8192) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -232,6 +245,9 @@ class JOENAPC(BaseModel):
         return uu, vv
 
     # ------------------------------------------------------------------
+    # 输入来源：实验入口传入图、训练锚点和训练选项，不传入真实评估实体。
+    # 核心思路：构造 RWR 与可选属性/位置输入，训练 MLP，并结合传输损失与轮廓辅助损失。
+    # 输出结果：保存 self.S 并返回 S 与日志，随后由入口传递给多对多解码器。
     def train(self,
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],
@@ -338,7 +354,7 @@ class JOENAPC(BaseModel):
             if self.group_marginals and epoch + 1 >= self.marginal_warmup:
                 # Bootstrap partitions from the current coupling and refresh
                 # the group-uniform marginals for the next epoch's solve.
-                from PlanetAlign.m2m_quotient import (
+                from PlanetAlign.m2m.quotient import (
                     merge_average_linkage, otsu_threshold, _pair_cosines)
                 with torch.no_grad():
                     Sf = S.detach().to(torch.float32).cpu()

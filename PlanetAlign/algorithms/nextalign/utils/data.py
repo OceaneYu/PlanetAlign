@@ -1,8 +1,13 @@
+# 文件作用：包装两侧上下文样本，并按训练锚点建立 NeXtAlign 的合并图与编号映射。
+# 数据来源：PlanetAlign/algorithms/nextalign/main.py 的 NeXtAlign 训练过程传入采样结果。
+# 结果去向：DataLoader 通过 __getitem__() 按索引取两侧样本交给训练循环。
+
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 
 
+# 功能：保存两侧上下文样本和数量，支持 DataLoader 按行读取。
 class ContextDataset(Dataset):
     def __init__(self, context_pairs1, context_pairs2):
         # data loading
@@ -10,6 +15,7 @@ class ContextDataset(Dataset):
         self.context_pairs2 = context_pairs2
         self.n_samples = context_pairs1.shape[0]
 
+    # 输出结果：返回同一索引处的两侧节点对。
     def __getitem__(self, index):
         return self.context_pairs1[index], self.context_pairs2[index]
 
@@ -17,6 +23,8 @@ class ContextDataset(Dataset):
         return self.n_samples
 
 
+# 输入来源：PlanetAlign/algorithms/nextalign/main.py → NeXtAlign.merge_two_graphs() 传入两图、锚点和输入特征。
+# 输出结果：合并边、边类型、合并特征及节点映射；锚点对应节点共用身份，供关系图卷积使用。
 def merge_graphs(graph1, graph2, x1, x2, anchor_links):
     visit = 0
     n1, n2 = graph1.num_nodes, graph2.num_nodes

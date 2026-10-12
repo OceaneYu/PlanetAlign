@@ -181,3 +181,4 @@ data/**/*.npz
 data/**/*.csv
 data/**/*.json
 data/**/*.jsonl
+.reference/

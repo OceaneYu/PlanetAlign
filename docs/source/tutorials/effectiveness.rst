@@ -56,6 +56,33 @@ Here is an example that benchmarks the ``FINAL`` algorithm on the ``PhoneEmail``
         # Evaluate with Hits@1 and MRR only
         result = model.test(data, gids=[0, 1], metrics=['Hits@1', 'MRR'])
 
+Tie handling
+------------
+
+Hits@K, MRR, and Mean Rank use an explicit ``tie_policy``. Scores within
+``tie_atol + tie_rtol * abs(truth_score)`` are considered equal. The supported
+rules are:
+
+- ``optimistic``: ``rank = num_strictly_greater + 1``.
+- ``average``: ``rank = num_strictly_greater + (num_equal + 1) / 2``.
+- ``pessimistic``: ``rank = num_strictly_greater + num_equal``.
+
+``num_equal`` includes the true candidate. The public default remains
+``optimistic`` for compatibility. Experiments should pass the policy and
+tolerances explicitly, especially for discrete or heavily duplicated scores.
+Neither node IDs nor anchor metadata are used to break ties.
+
+.. code-block:: python
+
+    result = model.test(
+        data,
+        gids=[0, 1],
+        metrics=['Hits@1', 'MRR', 'MeanRank'],
+        tie_policy='average',
+        tie_atol=1e-8,
+        tie_rtol=1e-7,
+    )
+
 Visualizing the Training Curve
 ------------------------------
 
@@ -96,4 +123,3 @@ Summary
 - A consistent benchmarking protocol helps compare methods fairly and reproducibly.
 
 Next: See the "Benchmarking Scalability" tutorial to evaluate runtime and memory usage of NA algorithms.
-

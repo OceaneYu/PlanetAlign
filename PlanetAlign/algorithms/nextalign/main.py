@@ -1,3 +1,8 @@
+# 文件作用：实现 NeXtAlign，在锚点合并图上结合结构位置、上下文与跨图差异学习表示。
+# 数据来源：调用者或 scripts/run_m2m_experiments.py → evaluate_algorithm() 将 Dataset 传给 NeXtAlign.train()。
+# 核心依赖：nextalign/utils/ 的随机游走、合图与负采样；PlanetAlign/algorithms/nextalign/model.py → Model。
+# 结果去向：返回两侧嵌入与日志，实验入口按配置提取匹配矩阵。
+
 from typing import Union, Tuple, List
 import torch
 import torch.nn.functional as F
@@ -15,6 +20,7 @@ from .utils import load_walks, extract_pairs, merge_graphs, ContextDataset, nega
 from .model import Model
 
 
+# 功能：配置随机游走、初始特征、负例与共享关系图网络。
 class NeXtAlign(BaseModel):
     """Embedding-based method NeXtAlign for pairwise network alignment.
     NeXtAlign is proposed by the paper: "`Balancing Consistency and Disparity in Network Alignment. <https://dl.acm.org/doi/abs/10.1145/3447548.3467331>`_"
@@ -80,6 +86,9 @@ class NeXtAlign(BaseModel):
         self.coeff2 = coeff2
         self.lr = lr
 
+    # 输入来源：两图随机游走提供上下文，训练锚点提供共享身份和位置特征，测试节点对供日志评估。
+    # 核心思路：采样上下文，构造 RWR/锚点特征，合并两图，再用 Model 的对齐与上下文损失训练。
+    # 输出结果：从合并图表示取回两侧节点嵌入并返回日志。
     def train(self,
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],
@@ -255,6 +264,7 @@ class NeXtAlign(BaseModel):
 
         return emb1, emb2, logger
 
+    # 功能：调用 PlanetAlign/algorithms/nextalign/utils/node2vec.py → load_walks()/extract_pairs()，再平衡两侧上下文样本数量。
     def _sample_positive_context_pairs(self, graph1, graph2, anchor_links, verbose=True):
         walks1 = load_walks(graph1, self.p, self.q, self.num_walks, self.walk_length, verbose=verbose)
         walks2 = load_walks(graph2, self.p, self.q, self.num_walks, self.walk_length, verbose=verbose)
@@ -263,6 +273,7 @@ class NeXtAlign(BaseModel):
         context_pairs1, context_pairs2 = balance_samples(context_pairs1, context_pairs2)
         return context_pairs1, context_pairs2
 
+    # 功能：为两图构造锚点 one-hot 与 RWR 结构位置特征。
     def _generate_initial_embeddings(self, graph1, graph2, anchor_links, use_attr):
         rwr_emb1 = get_batch_rwr_scores(graph1, anchor_links[:, 0], self.rwr_restart_prob, device=self.device).cpu().to(self.dtype)
         rwr_emb2 = get_batch_rwr_scores(graph2, anchor_links[:, 1], self.rwr_restart_prob, device=self.device).cpu().to(self.dtype)
@@ -280,12 +291,14 @@ class NeXtAlign(BaseModel):
             input_emb2 = pos_emb2
         return input_emb1, input_emb2
 
+    # 功能：调用 PlanetAlign/algorithms/nextalign/utils/data.py → merge_graphs()，整理合并图的特征和两侧编号映射。
     @staticmethod
     def merge_two_graphs(graph1, graph2, input_emb1, input_emb2, anchor_links):
         node_mapping1 = torch.arange(graph1.num_nodes, dtype=torch.int64)
         edge_index, edge_types, x, node_mapping2 = merge_graphs(graph1, graph2, input_emb1, input_emb2, anchor_links)
         return edge_index, edge_types, x, node_mapping1, node_mapping2
 
+    # 功能：比较两种表示中的跨图组合分数或距离，再经 sigmoid 得到节点匹配矩阵。
     @torch.no_grad()
     def get_cross_alignment_mat(self, emb1, emb2, weights):
         dim = emb1.shape[1]

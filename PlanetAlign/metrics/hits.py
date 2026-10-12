@@ -1,11 +1,21 @@
+# 文件作用：计算真实对应节点进入前 K 名的比例，即 Hits@K。
+# 数据来源：PlanetAlign/algorithms/base_model.py → BaseModel.test() 或算法训练日志流程传入 S 与评估节点对。
+# 核心依赖：PlanetAlign/metrics/ranking.py → pairwise_ranks() 统一处理排名与同分。
+
 from typing import Union
 import torch
 
+from .ranking import DEFAULT_TIE_ATOL, DEFAULT_TIE_RTOL, pairwise_ranks
 
+
+# 功能：按 mode 选择左到右、右到左、双向均值或双向最大值，返回各 K 对应的命中比例。
 def hits_ks_scores(simiarity: torch.Tensor,
                    test_pairs: torch.Tensor,
                    ks: Union[list[int], tuple[int, ...]] = (1, 10, 30, 50),
-                   mode: str = 'mean') -> dict[int, float]:
+                   mode: str = 'mean',
+                   tie_policy: str = 'optimistic',
+                   atol: float = DEFAULT_TIE_ATOL,
+                   rtol: float = DEFAULT_TIE_RTOL) -> dict[int, float]:
     r"""Hits@K scores of pairwise alignment results.
 
     Parameters
@@ -21,60 +31,88 @@ def hits_ks_scores(simiarity: torch.Tensor,
     """
 
     if mode == 'mean':
-        hits_ks = hits_ks_mean_scores(simiarity, test_pairs, ks=ks)
+        hits_ks = hits_ks_mean_scores(
+            simiarity, test_pairs, ks=ks, tie_policy=tie_policy,
+            atol=atol, rtol=rtol
+        )
     elif mode == 'max':
-        hits_ks = hits_ks_max_scores(simiarity, test_pairs, ks=ks)
+        hits_ks = hits_ks_max_scores(
+            simiarity, test_pairs, ks=ks, tie_policy=tie_policy,
+            atol=atol, rtol=rtol
+        )
     elif mode == 'ltr':
-        hits_ks = hits_ks_ltr_scores(simiarity, test_pairs, ks=ks)
+        hits_ks = hits_ks_ltr_scores(
+            simiarity, test_pairs, ks=ks, tie_policy=tie_policy,
+            atol=atol, rtol=rtol
+        )
     elif mode == 'rtl':
-        hits_ks = hits_ks_rtl_scores(simiarity, test_pairs, ks=ks)
+        hits_ks = hits_ks_rtl_scores(
+            simiarity, test_pairs, ks=ks, tie_policy=tie_policy,
+            atol=atol, rtol=rtol
+        )
     else:
         raise ValueError(f"Invalid mode: {mode}")
     return hits_ks
 
 
-def hits_ks_ltr_scores(similarity, test_pairs, ks=None):
+# 功能：按 S 的行查询目标节点，统计真实目标排名不超过 K 的比例。
+def hits_ks_ltr_scores(
+    similarity, test_pairs, ks=(1, 10, 30, 50),
+    tie_policy='optimistic', atol=DEFAULT_TIE_ATOL, rtol=DEFAULT_TIE_RTOL,
+):
     r"""Hits@K scores of graph1(left) to graph2(right) alignment."""
-    test_pairs = test_pairs.to(similarity.device)
-    hits_ks = {}
-    ranks1 = torch.argsort(-similarity[test_pairs[:, 0]], dim=1)
-    signal1_hit = ranks1 == test_pairs[:, 1].view(-1, 1)
-    for k in ks:
-        hits_ks[k] = (torch.sum(signal1_hit[:, :k]) / test_pairs.shape[0]).item()
-
-    return hits_ks
+    ranks = pairwise_ranks(
+        similarity, test_pairs, 'ltr', tie_policy, atol, rtol
+    )
+    return {k: float((ranks <= k).to(torch.float64).mean()) for k in ks}
 
 
-def hits_ks_rtl_scores(similarity, test_pairs, ks=None):
+# 功能：按 S 的列反向查询源节点，统计真实源节点进入前 K 名的比例。
+def hits_ks_rtl_scores(
+    similarity, test_pairs, ks=(1, 10, 30, 50),
+    tie_policy='optimistic', atol=DEFAULT_TIE_ATOL, rtol=DEFAULT_TIE_RTOL,
+):
     r"""Hits@K scores of graph2(right) to graph1(left) alignment."""
-    test_pairs = test_pairs.to(similarity.device)
-    hits_ks = {}
-    ranks2 = torch.argsort(-similarity.T[test_pairs[:, 1]], dim=1)
-    signal2_hit = ranks2 == test_pairs[:, 0].view(-1, 1)
-    for k in ks:
-        hits_ks[k] = (torch.sum(signal2_hit[:, :k]) / test_pairs.shape[0]).item()
-
-    return hits_ks
+    ranks = pairwise_ranks(
+        similarity, test_pairs, 'rtl', tie_policy, atol, rtol
+    )
+    return {k: float((ranks <= k).to(torch.float64).mean()) for k in ks}
 
 
-def hits_ks_max_scores(similarity, test_pairs, ks=None):
+# 输出结果：对每个 K 取双向 Hits 的较大值，不是合并两侧候选。
+def hits_ks_max_scores(
+    similarity, test_pairs, ks=(1, 10, 30, 50),
+    tie_policy='optimistic', atol=DEFAULT_TIE_ATOL, rtol=DEFAULT_TIE_RTOL,
+):
     r"""Max Hits@K scores of left-to-right and right-to-left alignments."""
     hits_ks = {}
 
-    hits_ks_ltr = hits_ks_ltr_scores(similarity, test_pairs, ks=ks)
-    hits_ks_rtl = hits_ks_rtl_scores(similarity, test_pairs, ks=ks)
+    hits_ks_ltr = hits_ks_ltr_scores(
+        similarity, test_pairs, ks, tie_policy, atol, rtol
+    )
+    hits_ks_rtl = hits_ks_rtl_scores(
+        similarity, test_pairs, ks, tie_policy, atol, rtol
+    )
     for k in ks:
         hits_ks[k] = max(hits_ks_ltr[k], hits_ks_rtl[k])
 
     return hits_ks
 
 
-def hits_ks_mean_scores(similarity, test_pairs, ks=None):
+# 输出结果：对每个 K 平均左到右与右到左的命中比例。
+def hits_ks_mean_scores(
+    similarity, test_pairs, ks=(1, 10, 30, 50),
+    tie_policy='optimistic', atol=DEFAULT_TIE_ATOL, rtol=DEFAULT_TIE_RTOL,
+):
     r"""Mean Hits@K scores of left-to-right and right-to-left alignments."""
     hits_ks = {}
 
-    hits_ks_ltr = hits_ks_ltr_scores(similarity, test_pairs, ks=ks)
-    hits_ks_rtl = hits_ks_rtl_scores(similarity, test_pairs, ks=ks)
+    hits_ks_ltr = hits_ks_ltr_scores(
+        similarity, test_pairs, ks, tie_policy, atol, rtol
+    )
+    hits_ks_rtl = hits_ks_rtl_scores(
+        similarity, test_pairs, ks, tie_policy, atol, rtol
+    )
     for k in ks:
         hits_ks[k] = (hits_ks_ltr[k] + hits_ks_rtl[k]) / 2
 

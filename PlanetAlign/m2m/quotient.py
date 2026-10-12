@@ -1,3 +1,10 @@
+# 文件作用：把节点配对分数 S 变成“源节点组对应目标节点组”的多对多预测。
+# 数据来源：scripts/run_quotient_compare.py → main() 传入 S、两侧图和训练锚点 anchors。
+# 核心处理：quotient_decode() 提出分组、选择分组，再根据组与组的分数安排匹配。
+# 核心依赖：预测完成后，evaluate_quotient_blind() 调用 PlanetAlign/m2m/core.py → align_prediction_to_ground_truth() 对应编号，再交给 PlanetAlign/metrics/many_to_many.py 评分。
+# 结果去向：评分、原预测 pred 与记录 info 按返回选项交回入口；真实分组 gt 只用于评估。
+# 阅读建议：先看 evaluate_quotient_blind() 区分预测和评分，再看 quotient_decode() 的循环与返回值。
+
 """Quotient decoding: a principled many-to-many readout over a 1-1 aligner.
 
 Design rationale (each choice answers one failure mode documented in
@@ -51,7 +58,7 @@ Design rationale (each choice answers one failure mode documented in
    (154/7917 true), with no gate able to rescue it — whole rows of the vanilla
    coupling are duplicated across unrelated nodes (null q999 = 1.0), traced to
    an input symmetry (identical ``[attr, anchor-RWR]`` inputs give identical
-   rows forever). :mod:`PlanetAlign.m2m_contrastive` (JOENA-PC) breaks the
+   rows forever). :mod:`PlanetAlign.m2m.contrastive` (JOENA-PC) breaks the
    symmetry at training time (propagated positional features + a
    profile-uniformity term); on its S the null bulk dissolves (q99 1.0 -> 0.88)
    and this same candidate *wins* the anchor arbitration (Douban blind MicroF1
@@ -76,7 +83,7 @@ Design rationale (each choice answers one failure mode documented in
 Everything here is post-hoc over a frozen ``S``: the empirical finding is that
 the bottleneck of 1-1 methods on M2M is the readout, not the representation.
 The prediction path never touches the ground-truth entity map, so results are
-valid under the blind protocol in :mod:`PlanetAlign.m2m_blind`.
+valid under the blind protocol in :mod:`PlanetAlign.m2m.blind`.
 
 Precondition (measured scope boundary). QuotientDecode is a *readout over an
 aligned* ``S``: its evidence is that group-mates have collinear ``S`` rows,
@@ -122,6 +129,8 @@ def _pair_cosines(profiles: torch.Tensor, u: torch.Tensor, v: torch.Tensor) -> t
     return (p[u] * p[v]).sum(dim=1)
 
 
+# 输入来源：quotient_decode() 传入 S 和另一侧的分组列表。
+# 输出结果：每组列取均值，得到更短的匹配轮廓，作为下一轮分组输入。
 def pool_columns(S: torch.Tensor, groups: Sequence[Sequence[int]]) -> torch.Tensor:
     """Mean-pool the columns of ``S`` by group: returns ``[n_rows, n_groups]``."""
     n_rows, n_cols = S.shape
@@ -136,6 +145,7 @@ def pool_columns(S: torch.Tensor, groups: Sequence[Sequence[int]]) -> torch.Tens
     return pooled / size.unsqueeze(0)
 
 
+# 功能：按分组汇总矩阵列，支持均值、和、最大值；供 quotient_scores() 计算不同组间分数。
 def _pool_columns_reduce(S: torch.Tensor, groups: Sequence[Sequence[int]],
                          reduce: str) -> torch.Tensor:
     """Column pooling by group with ``sum`` / ``mean`` / ``amax`` reduction."""
@@ -157,6 +167,8 @@ def _pool_columns_reduce(S: torch.Tensor, groups: Sequence[Sequence[int]],
     return pooled
 
 
+# 功能：将节点矩阵 S 汇总为源组与目标组的分数矩阵 T。
+# 输出结果：默认使用双侧均值；T 交给匹配器，其他模式用于解码对比实验。
 def quotient_scores(S: torch.Tensor,
                     src_groups: Sequence[Sequence[int]],
                     tgt_groups: Sequence[Sequence[int]],
@@ -195,6 +207,8 @@ def quotient_scores(S: torch.Tensor,
     raise ValueError(f"unknown score mode: {mode}")
 
 
+# 功能：将节点间的边压缩成组间的边，并添加自环、按行归一化。
+# 输出结果：组邻接矩阵供 neighbor_consistency_refine() 或 fgw_match() 使用。
 def quotient_adjacency(graph, groups: Sequence[Sequence[int]]) -> torch.Tensor:
     """Row-normalized quotient-graph adjacency (with self-loops): [g, g]."""
     g = len(groups)
@@ -209,6 +223,8 @@ def quotient_adjacency(graph, groups: Sequence[Sequence[int]]) -> torch.Tensor:
     return A / A.sum(dim=1, keepdim=True).clamp(min=1.0)
 
 
+# 功能：用两侧组的邻接关系传播匹配分数，鼓励相邻组也能对应。
+# 流程位置：quotient_decode() 在 neighbor_beta > 0 时、正式组匹配前调用。
 def neighbor_consistency_refine(T: torch.Tensor,
                                 Aq1: torch.Tensor,
                                 Aq2: torch.Tensor,
@@ -231,6 +247,8 @@ def neighbor_consistency_refine(T: torch.Tensor,
     return Tn
 
 
+# 功能：检查成员与同组其余节点的轮廓是否相近，符合条件时把异常成员拆为单节点组。
+# 流程位置：quotient_decode() 只对采用 profile 证据的分组做这次修正。
 def evict_outliers(groups: List[List[int]],
                    profiles: torch.Tensor,
                    tau: float) -> List[List[int]]:
@@ -266,6 +284,8 @@ def evict_outliers(groups: List[List[int]],
 # ---------------------------------------------------------------------------
 # Adaptive threshold
 # ---------------------------------------------------------------------------
+# 功能：从相似度分布自动选出划分高低两类的阈值；样本不足或变化太小时使用备用值。
+# 输出结果：阈值交给 _candidate_partitions()，用于判断哪些候选节点对可合并。
 def otsu_threshold(values: torch.Tensor,
                    lo: float = 0.05,
                    hi: float = 0.6,
@@ -306,6 +326,9 @@ def otsu_threshold(values: torch.Tensor,
 # ---------------------------------------------------------------------------
 # Anti-chaining agglomeration
 # ---------------------------------------------------------------------------
+# 输入来源：_candidate_partitions() 传入节点对、轮廓相似度和合并阈值。
+# 核心思路：先处理高分对，再检查两个组的整体轮廓，避免仅靠中间节点串起不相近的组。
+# 输出结果：每个节点归属一个组的列表，供分组选择与组间匹配使用。
 def merge_average_linkage(num_nodes: int,
                           u: torch.Tensor,
                           v: torch.Tensor,
@@ -361,6 +384,8 @@ def merge_average_linkage(num_nodes: int,
 # ---------------------------------------------------------------------------
 # RMT-motivated evidence: null-calibrated threshold and global candidates
 # ---------------------------------------------------------------------------
+# 功能：随机抽取节点轮廓对，用高分位数估计偶然相似的上限。
+# 输出结果：为 _candidate_partitions() 提供备用合并阈值；证据退化时可返回 None。
 def null_threshold(profiles: torch.Tensor,
                    num_null: int = 20000,
                    q: float = 0.999,
@@ -388,6 +413,9 @@ def null_threshold(profiles: torch.Tensor,
     return None if t > degenerate_above else t
 
 
+# 功能：在属性非零位置相同的桶内寻找轮廓高度相似的节点对，补充不相邻节点的候选。
+# 核心思路：限制共同最高分列的负载、桶大小和每个节点候选数，减少无差别相似带来的合并。
+# 输出结果：节点对和分数交给 _candidate_partitions() 与邻接候选一起处理。
 def global_candidate_pairs(profiles: torch.Tensor,
                            x: Optional[torch.Tensor],
                            tau_global: float = 0.98,
@@ -450,6 +478,8 @@ def global_candidate_pairs(profiles: torch.Tensor,
 # ---------------------------------------------------------------------------
 # Blind evidence selection
 # ---------------------------------------------------------------------------
+# 功能：比较组内与跨组相邻节点的平均轮廓相似度。
+# 流程位置：_select_partitions() 在训练锚点不足时用这个分数选择分组。
 def partition_contrast(profiles: torch.Tensor,
                        u: torch.Tensor,
                        v: torch.Tensor,
@@ -480,6 +510,9 @@ def partition_contrast(profiles: torch.Tensor,
     return float(within.mean() - cross.mean())
 
 
+# 输入来源：quotient_decode() 每轮传入一侧图、当前轮廓和相邻节点对。
+# 功能：生成轮廓阈值、随机对阈值、全局候选及属性分组中当前允许的候选。
+# 输出结果：返回带证据名称的分组候选和阈值，交给 _select_partitions()。
 def _candidate_partitions(profiles: torch.Tensor,
                           graph,
                           u: torch.Tensor,
@@ -504,7 +537,7 @@ def _candidate_partitions(profiles: torch.Tensor,
     def profile_partition(t: float) -> List[List[int]]:
         if anti_chaining:
             return merge_average_linkage(int(graph.num_nodes), u, v, sims, profiles, t)
-        from PlanetAlign.m2m_blind import discover_groups_by_profile
+        from PlanetAlign.m2m.blind import discover_groups_by_profile
         return discover_groups_by_profile(profiles, graph, tau=t)
 
     tau_main = tau if tau is not None else otsu_threshold(sims)
@@ -531,13 +564,15 @@ def _candidate_partitions(profiles: torch.Tensor,
             candidates.append((f"profile-g@{tau_main:.3f}+{gu.numel()}",
                                merge_average_linkage(n, all_u, all_v, all_s, profiles, tau_vec)))
     if (evidence_selection and use_attr and x is not None and want("attr")):
-        from PlanetAlign.m2m_blind import discover_groups
+        from PlanetAlign.m2m.blind import discover_groups
         candidates.append(("attr", discover_groups(graph, use_attr=True)))
     if not candidates:  # allowed kind unavailable this round — fall back to profile
         candidates.append((f"profile@{tau_main:.3f}", profile_partition(tau_main)))
     return candidates, tau_main
 
 
+# 输出结果：将节点组列表转成长度为 num_nodes 的“节点→组编号”张量，未分配节点保留 -1。
+# 结果去向：anchor_agreement() 查询锚点所属组，quotient_adjacency() 据此把节点边转成组边。
 def _group_labels(groups: Sequence[Sequence[int]], num_nodes: int) -> torch.Tensor:
     labels = torch.full((num_nodes,), -1, dtype=torch.long)
     for gid, members in enumerate(groups):
@@ -546,6 +581,8 @@ def _group_labels(groups: Sequence[Sequence[int]], num_nodes: int) -> torch.Tens
     return labels
 
 
+# 功能：把训练节点对提升到组层面，检查对应节点所在的两个组是否匹配。
+# 输出结果：返回减去随机命中影响的分数和原始命中比例，供 _select_partitions() 比较候选。
 def anchor_agreement(S: torch.Tensor,
                      src_groups: Sequence[Sequence[int]],
                      tgt_groups: Sequence[Sequence[int]],
@@ -586,6 +623,9 @@ def anchor_agreement(S: torch.Tensor,
     return raw - chance / m, raw
 
 
+# 输入来源：PlanetAlign/m2m/base.py → arbitrate_sharpen() 等传入最终预测实体和训练锚点。
+# 功能：统计训练节点对是否同属某个预测实体，并扣除目标组过大带来的偶然命中。
+# 输出结果：候选选择信号；不使用真实评估实体。
 def entity_anchor_agreement(pred: "EntityMap",
                             anchors: torch.Tensor,
                             n2: int) -> Tuple[float, float]:
@@ -617,6 +657,9 @@ def entity_anchor_agreement(pred: "EntityMap",
     return raw - chance / m, raw
 
 
+# 功能：从两侧候选中选择分组组合；至少 20 个锚点时比较 anchor_agreement()。
+# 核心思路：接近最佳锚点分数的候选优先选较少组；锚点不足则逐侧比较 partition_contrast()。
+# 输出结果：两侧分组、证据名称和分数交回 quotient_decode()。
 def _select_partitions(S: torch.Tensor,
                        cands_s: List[Tuple[str, List[List[int]]]],
                        cands_t: List[Tuple[str, List[List[int]]]],
@@ -665,6 +708,8 @@ def _select_partitions(S: torch.Tensor,
 # ---------------------------------------------------------------------------
 # Quotient matching
 # ---------------------------------------------------------------------------
+# 功能：用 scipy.optimize.linear_sum_assignment 在整个组分数矩阵上求一对一组匹配。
+# 输出结果：源组编号到目标组编号的字典，低于阈值的匹配被丢弃。
 def hungarian_match(T: torch.Tensor, relative_threshold: float = 0.0) -> Dict[int, int]:
     """Global one-to-one assignment between source and target groups.
 
@@ -680,6 +725,7 @@ def hungarian_match(T: torch.Tensor, relative_threshold: float = 0.0) -> Dict[in
     return {int(a): int(b) for a, b in zip(rows, cols) if Tn[a, b] > cutoff}
 
 
+# 功能：每个源组各自选择最高分目标组；多个源组可选中同一目标组。
 def greedy_match(T: torch.Tensor, relative_threshold: float = 0.0) -> Dict[int, int]:
     """Per-source-group argmax matching (the pre-quotient baseline readout)."""
     if T.numel() == 0:
@@ -689,6 +735,8 @@ def greedy_match(T: torch.Tensor, relative_threshold: float = 0.0) -> Dict[int, 
     return {a: int(best_idx[a]) for a in range(T.shape[0]) if float(best_val[a]) > cutoff}
 
 
+# 功能：结合组间分数和两侧组结构，用 POT 的融合 Gromov-Wasserstein 求匹配权重。
+# 输出结果：再经 hungarian_match() 转为一对一组匹配，供 quotient_decode() 的可选分支使用。
 def fgw_match(T: torch.Tensor,
               Aq_src: torch.Tensor,
               Aq_tgt: torch.Tensor,
@@ -734,6 +782,10 @@ def _partition_signature(groups: Sequence[Sequence[int]]) -> Tuple[Tuple[int, ..
     return tuple(sorted(tuple(sorted(g)) for g in groups))
 
 
+# 流程位置：S 已生成之后、对照真实分组评分之前；PlanetAlign/m2m/base.py 也调用它比较矩阵版本。
+# 输入来源：调用者传入 S、两侧图和可选训练锚点；没有真实分组答案 gt 参数。
+# 核心思路：_candidate_partitions() 提出可能的组，_select_partitions() 选择组，pool_columns() 汇总分数帮助下一轮判断。
+# 输出结果：quotient_scores() 与匹配器确定组对应，返回 pred 实体字典与 info 过程记录给调用方。
 def quotient_decode(S: torch.Tensor,
                     graph_src,
                     graph_tgt,
@@ -881,6 +933,9 @@ def quotient_decode(S: torch.Tensor,
     return pred, info
 
 
+# 输入来源：scripts/run_quotient_compare.py → main() 等传入 S、两侧图、真实分组和解码选项。
+# 功能：先把 S 和图交给 quotient_decode() 预测，再用 PlanetAlign/m2m/core.py → align_prediction_to_ground_truth() 对应编号。
+# 输出结果：调用 PlanetAlign/metrics/many_to_many.py → many_to_many_scores() 返回分数，按选项附带原预测与记录；gt 不传入预测函数。
 def evaluate_quotient_blind(S: torch.Tensor,
                             gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
                             graph_src,
@@ -900,15 +955,18 @@ def evaluate_quotient_blind(S: torch.Tensor,
 # ---------------------------------------------------------------------------
 # Model wrapper (JOENA aligner + quotient decode)
 # ---------------------------------------------------------------------------
+# 功能：将 JOENA 训练与本文件的多对多解码包装成一个模型对象。
 class JOENAQuotientDecode(BaseModel):
     """JOENA aligner + quotient decoding readout.
 
     Trains JOENA to produce the node similarity ``S``, then applies the full
     quotient readout (adaptive taus, anti-chaining agglomeration, Hungarian
     quotient matching, alternating refinement). The readout is aligner-agnostic;
-    see :mod:`PlanetAlign.m2m_base` for swapping in other base aligners (PARROT).
+    see :mod:`PlanetAlign.m2m.base` for swapping in other base aligners (PARROT).
     """
 
+    # 功能：把参数分别存入 JOENA 训练配置与实体解码配置，初始化待保存的图、锚点和解码记录。
+    # 流程位置：构造对象不启动计算；train() 取得 S，predict_entities() 再使用解码配置生成实体。
     def __init__(self,
                  tau: Optional[float] = None,
                  max_iters: int = 2,
@@ -945,6 +1003,8 @@ class JOENAQuotientDecode(BaseModel):
         self._anchors: Optional[torch.Tensor] = None
         self.decode_info: Optional[Dict[str, object]] = None
 
+    # 功能：调用 PlanetAlign/algorithms/joena/main.py → JOENA.train() 得到 S，并保存两侧图和训练锚点。
+    # 输出结果：返回矩阵与日志，为 predict_entities() 准备模型状态。
     def train(self,
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],
@@ -963,6 +1023,7 @@ class JOENAQuotientDecode(BaseModel):
         self._anchors = get_anchor_pairs(dataset.train_data, gid1, gid2)
         return self.S, logger
 
+    # 功能：将 train() 保存的矩阵、图和锚点传给 quotient_decode()，返回不依赖真实实体的预测。
     def predict_entities(self) -> EntityMap:
         if self.S is None:
             raise RuntimeError("Model is not trained yet, call train() first")
@@ -972,6 +1033,7 @@ class JOENAQuotientDecode(BaseModel):
         self.decode_info = info
         return pred
 
+    # 功能：调用 predict_entities()，然后适配实体编号并评分，返回分数字典。
     def test_blind(self,
                    gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
                    metrics: Optional[Iterable[str]] = None) -> Dict[str, float]:

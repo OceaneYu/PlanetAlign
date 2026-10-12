@@ -1,3 +1,7 @@
+# 文件作用：将图上的 node2vec 随机游走转为窗口内节点上下文对。
+# 数据来源：PlanetAlign/algorithms/nextalign/main.py → NeXtAlign._sample_positive_context_pairs() 传入图与游走参数。
+# 结果去向：load_walks() 返回游走序列，extract_pairs() 返回训练节点对；经典别名采样实现保留原样。
+
 import numpy as np
 import random
 
@@ -112,6 +116,7 @@ class Graph:
         return
 
 
+# 功能：把 PyG 图转为 NetworkX，预计算转移概率后生成多轮 node2vec 游走序列。
 def load_walks(pyg_graph, p, q, num_walks, walk_length, verbose=True):
     """
     Load the random walks generated from the Node2Vec algorithm.
@@ -169,6 +174,7 @@ def alias_draw(J, q):
         return J[kk]
 
 
+# 功能：在每条游走的窗口内提取节点对、去重并打乱，返回 PyTorch 张量给训练入口。
 def extract_pairs(walks, center_nodes, window_size=2):
     context_pairs = []
     for walk in walks:

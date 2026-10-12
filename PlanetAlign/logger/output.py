@@ -1,9 +1,14 @@
+# 文件作用：计算并格式化节点对齐基础指标，用于终端展示。
+# 核心依赖：PlanetAlign/metrics/hits.py → hits_ks_scores() 与 PlanetAlign/metrics/mrr.py → mrr_score()。
+# 阅读建议：eval_and_print_basic() 负责评估与打印，get_hits_mrr_log() 只接收已有分数并格式化。
+
 from typing import Optional, Union, List, Tuple
 import warnings
 
 from PlanetAlign.metrics import hits_ks_scores, mrr_score
 
 
+# 输入来源：调用者传入匹配矩阵和真实节点对；函数计算多种方向的 Hits/MRR 并打印。
 def eval_and_print_basic(similarity, test_pairs,
                          title: Optional[str] = None,
                          modes: Union[List[str], Tuple[str, ...]] = ('mean', 'max'),
@@ -28,6 +33,7 @@ def eval_and_print_basic(similarity, test_pairs,
     print("-" * line_length)
 
 
+# 输出结果：将 Hits 字典、MRR 和可选前缀拼成字符串，不计算指标。
 def get_hits_mrr_log(hits, mrr, prefix: Optional[str] = None, digits: int = 4) -> str:
     """
     Get formatted strings of Hits@K and MRR scores.

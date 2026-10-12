@@ -8,3 +8,6 @@ torch_geometric
 gdown
 POT
 seaborn
+scipy
+networkx
+scikit-learn

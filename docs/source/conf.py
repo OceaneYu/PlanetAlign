@@ -1,3 +1,7 @@
+# 文件作用：配置 Sphinx 文档生成，并让 .rst 模板可以读取 PlanetAlign 的导出内容。
+# 核心依赖：setup() 注册 source-read 事件，rst_jinja_render() 通过构建器的模板引擎渲染。
+# 结果去向：供 docs/Makefile 的 Sphinx 构建使用，不属于训练运行流程。
+
 # Configuration file for the Sphinx documentation builder.
 
 import os
@@ -59,6 +63,8 @@ print("PlanetAlign found:", PlanetAlign)
 print("Available attributes:", dir(PlanetAlign))
 
 
+# 输入来源：Sphinx 读取 .rst 时触发 source-read，传入应用对象和源码列表。
+# 功能：将 PlanetAlign 放入模板上下文，渲染后写回 source[0]。
 def rst_jinja_render(app, _, source):
     """Enable Jinja templating in .rst files."""
     if hasattr(app.builder, "templates"):
@@ -66,6 +72,7 @@ def rst_jinja_render(app, _, source):
         source[0] = app.builder.templates.render_string(source[0], rst_context)
 
 
+# 功能：将 rst_jinja_render() 注册为文档源码读取事件的回调。
 def setup(app):
     """Setup Sphinx to process Jinja templates."""
     app.connect("source-read", rst_jinja_render)

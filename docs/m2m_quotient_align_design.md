@@ -1,7 +1,7 @@
 # QuotientDecode：由"核心矛盾"推出的多对多图对齐算法
 ### 设计、实现与盲评验证
 
-> 配套代码：[`PlanetAlign/m2m_quotient.py`](../PlanetAlign/m2m_quotient.py)（算法）、
+> 配套代码：[`PlanetAlign/m2m/quotient.py`](../PlanetAlign/m2m/quotient.py)（算法）、
 > [`tests/test_m2m_quotient.py`](../tests/test_m2m_quotient.py)（10 项单元测试）、
 > [`scripts/run_quotient_compare.py`](../scripts/run_quotient_compare.py)（对照实验）。
 > 全部数字可由对照脚本复现，原始输出在 `logs/m2m_diag/quotient_compare_*.json`。
@@ -103,7 +103,7 @@ Douban 全程 0.5 s、Cora 1.3 s（JOENA 训练之外）。
 
 受控设定：**同一个 JOENA `S`（alpha=0.7，10 epochs，seed 42），只换读出**；全部盲评（预测路径不见实体真值）。
 
-**主表（盲评，MicroF1 / MSF1 / ACS）**
+**主表（盲评，Macro Set-F1 / Micro Set-F1 / AUIS / AUCS）**
 
 | 读出 | Douban | Cora |
 |------|--------|------|
@@ -130,8 +130,8 @@ Douban 全程 0.5 s、Cora 1.3 s（JOENA 训练之外）。
 两数据集的组件贡献**互补**：Douban 靠 ②③④（画像侧精修），Cora 靠 ⑤（证据仲裁）——与机制解释一致
 （Douban 画像信号强、Cora 画像信号被平衡边际抹掉）。
 
-**overlap 扩展的权衡**：Douban（overlap_ratio=0.05）上 MicroF1/ACS/SGS 全升（SGS 0.370→0.674），
-但 EGS 0.439→0.104——二次成员让真值组暴露于更多预测簇。Cora（无 overlap）上无害（0.9925→0.9930）。
+**overlap 扩展的权衡**：Douban（overlap_ratio=0.05）上 MicroF1/AUIS 全升（AUIS 0.370→0.674），
+但 AUCS 0.439→0.104——二次成员让真值组暴露于更多预测簇。Cora（无 overlap）上无害（0.9925→0.9930）。
 故默认关闭，仅在已知有模糊边界的数据上开启。
 
 ## 5.5 随机矩阵理论（RMT）视角：两个采纳、三个证伪、一个天花板
@@ -183,7 +183,7 @@ S（整行重复）、属性（907 人大桶）、结构（生成器把邻居不
 ## 5.6 训练侧：JOENA-PC（突破读出天花板）
 
 §5.5 测出的天花板宣判"只改读出到此为止"，本节把修复前移进训练（实现
-[`PlanetAlign/m2m_contrastive.py`](../PlanetAlign/m2m_contrastive.py)）。
+[`PlanetAlign/m2m/contrastive.py`](../PlanetAlign/m2m/contrastive.py)）。
 
 **根因（比"缺个损失项"更深）**。JOENA 的输入是 `[属性, 锚点RWR]`。Douban 上 98% 节点与他人共享完全相同的
 属性行（最大桶 907 人），而远离全部 44 个训练锚点的节点 RWR 亦近零——**输入完全相同 ⇒ MLP 输出永远相同 ⇒
@@ -236,7 +236,7 @@ Douban 全程（多种子口径）：0.32 → 0.44 → **0.64**；PeMS08：0.32 
 ## 5.7 训练侧二：组级 Sinkhorn 边际（保留）
 
 PC-G 的证伪（§7-1）把矛头指向数据项本身，本节直接改它（实现于
-[`m2m_contrastive.py`](../PlanetAlign/m2m_contrastive.py) 的 `JOENAPC(group_marginals=True)`，
+[`m2m/contrastive.py`](../PlanetAlign/m2m/contrastive.py) 的 `JOENAPC(group_marginals=True)`，
 不动上游 `algorithms/joena`）：**训练中每轮从当前 S 自举分区（同读出的画像聚类），把 Sinkhorn 边际从
 "每节点 1/n" 改为 "每组一个单位、组内均分"，与均匀边际按 ρ 混合**（默认 ρ=0.5，warmup 3 轮）。
 这在组级消除 k-对-m 的质量错配：实体的 k 个源节点合计一个单位，可整体送进对面 m 个节点的目标组。
@@ -375,7 +375,7 @@ builder 代码（L474）证实：M2M 数据的 `anchor_links` **就是原版数�
 监督）**，实体真值构造自原版 test split。而本文此前所有实验用 `Dataset(train_ratio=0.2)` 加载，把这份监督
 **又切了一次 20/80**——实际监督仅为原版的 4%（arenas 45/227、italy 15/75、pems08 6/34）。富属性集靠属性
 扛住，结构依赖集饿死。**诚实性验证**：9/9 数据集锚点节点与 GT 实体节点严格不相交（零泄漏），全量使用
-`anchor_links` 恰好还原论文协议。修复：[`use_full_anchor_supervision`](../PlanetAlign/m2m.py)，
+`anchor_links` 恰好还原论文协议。修复：[`use_full_anchor_supervision`](../PlanetAlign/m2m/core.py)，
 脚本默认启用（`--no-full-anchors` 复现旧协议；缓存标记 `_fa`）。**此前所有章节的数字属于"4% 监督"口径**，
 内部对照仍有效（同口径配对），但绝对值以本节起的口径为准。
 
@@ -448,7 +448,7 @@ QuotientDecode 价值的直接证明；(3) T 仲裁跨 S 类型自适应（耦�
 的任何数字，但堵住了未来使用该数据集时的评测污染。
 
 1. **不连通天花板已被推进但未消除**：JOENA-PC 使 Douban 的全局候选复活（0.677），但零分布残尾仍在
-   （q999≈0.999），且 ACS 略降（0.508→0.446）——全局合并换来的 MicroF1/MSF1 提升伴随少量误并。
+   （q999≈0.999）——全局合并换来的 MicroF1/MSF1 提升伴随少量误并。
 2. **PC 的体制依赖**：平衡边际（Airport/PeMS08）上 PC 锐化 S、削弱画像可分组性，需靠 auto 仲裁退回基线——
    "一个 S 同时最优所有体制"仍未实现；对比项与边际约束的相互作用值得更细的训练侧研究。
 3. **迭代收益小**（+0.004，airport 上甚至 −0.004）。
@@ -463,7 +463,7 @@ QuotientDecode 价值的直接证明；(3) T 仲裁跨 S 类型自适应（耦�
 
 §5.11.1 用 PARROT 复活了四个弱属性数据集。自然的追问：PARROT 只是弱属性的补丁，还是**一个更好的
 统一基座**？把基座从"逐数据集挑"升级为**锚点可仲裁的一等超参**（与证据选择、锐化温度同一套盲信号），
-在修正协议下做 4 种子 × 9 数据集全网格重验证。基座层已落地为 [`m2m_base.py`](../PlanetAlign/m2m_base.py)
+在修正协议下做 4 种子 × 9 数据集全网格重验证。基座层已落地为 [`m2m/base.py`](../PlanetAlign/m2m/base.py)
 （`train_base_S` + `arbitrate_sharpen`：raw vs `softmax(S/T)` 按机会校正锚点一致率盲选），并接入
 `run_quotient_compare.py --base PARROT`。
 
@@ -565,8 +565,8 @@ italy 0.372→0.387（+0.015）**。**结构型分组恰在基座弱时（italy�
    §3-④"排他性放回正确层级"由"够用"升级为"在所试匹配器族中近乎最优"；低 reg_m 下质量销毁过于廉价导致
    大面积弃配是主要失效模式。
 3. **谱指纹接入仲裁**：erank/n、GD 尖峰数作为无锚点时的证据先验（§6-6）。
-4. **全量基准**：`run_m2m_experiments.py` 全 16 算法 × 全数据集，把 QuotientDecode(+auto) 作为统一读出层
-   挂到每个 1-1 方法之上；多种子 + λ 敏感性，出终榜。
+4. **全量基准**：`run_m2m_experiments.py` 已把 QuotientDecode 作为统一正式读出层挂到每个 1-1 方法之上；
+   剩余全 16 算法 × 全数据集、多种子 + λ 敏感性，出终榜。
 5. **联合块结构方向（FGW / srGW）——已测，见 §5.14**：(a) 商图 FGW 匹配已实现并**保留为选项**
    （`matcher="fgw"`，7 胜 2 负、douban +0.024），并发现匹配器层锚点仲裁失效的新证据；(b) srGW 分区
    发现探测混合（italy +0.015 / arenas −0.021），存档未集成。剩余：把 srGW 画像作第 5 种分组证据

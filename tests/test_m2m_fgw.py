@@ -1,3 +1,7 @@
+# 文件作用：验证结构辅助匹配、组唯一性及单组退化处理。
+# 核心依赖：PlanetAlign/m2m/quotient.py → fgw_match()/hungarian_match()/quotient_adjacency()；样例在本文件构造，不需完整基准。
+# 阅读建议：先读测试类的准备数据和对应断言，可用 python -m unittest discover -s tests 运行。
+
 """Unit tests for the Fused Gromov-Wasserstein quotient matcher.
 
 FGW is the exact nonlinear form of the quotient consistency principle whose
@@ -12,7 +16,7 @@ import unittest
 import torch
 from torch_geometric.data import Data
 
-from PlanetAlign.m2m_quotient import fgw_match, hungarian_match, quotient_adjacency
+from PlanetAlign.m2m.quotient import fgw_match, hungarian_match, quotient_adjacency
 
 
 def _graph(num_nodes, edges):
@@ -24,6 +28,7 @@ def _graph(num_nodes, edges):
     return Data(edge_index=ei, num_nodes=num_nodes)
 
 
+# 功能：在固定组分数与组邻接上检查匹配，避免重新训练算法干扰比较。
 class FGWMatchTest(unittest.TestCase):
     def test_is_one_to_one(self):
         T = torch.tensor([[0.9, 0.1, 0.1], [0.1, 0.8, 0.2], [0.1, 0.2, 0.85]])

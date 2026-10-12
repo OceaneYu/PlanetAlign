@@ -2,7 +2,7 @@ Welcome to PlanetAlign's documentation!
 ======================================
 
 **PlanetAlign** is a Python library for network alignment (NA) tasks built upon `PyTorch <https://pytorch.org>`_ and `PyTorch Geometric <https://pytorch-geometric.readthedocs.io/en/latest/>`_. **PlanetAlign** includes
-18 built-in datasets for NA tasks across 6 different domains, as well as 14 existing NA algorithms.
+18 built-in datasets for NA tasks across 6 different domains, as well as 19 existing NA algorithms.
 
 ..
     Check out the :doc:`usage` section for further information, including

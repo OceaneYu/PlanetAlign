@@ -1,6 +1,11 @@
+# 文件作用：计算多边际最优传输的单图/两图边际和结构损失张量。
+# 数据来源：PlanetAlign/algorithms/hot/main.py → HOT._multi_fgw() 传入对数传输张量及各图结构矩阵。
+# 结果去向：返回边际与代价修正项，供 _multi_fgw() 下一轮更新。
+
 import torch
 
 
+# 功能：对其他维度做 logsumexp，得到各图的对数边际。
 def compute_p_i(log_T):
     num_dists = len(log_T.shape)
     p_i = {}
@@ -11,6 +16,7 @@ def compute_p_i(log_T):
     return p_i
 
 
+# 功能：对剩余维度求和，得到每对图的对数联合边际。
 def compute_p_ij(log_T):
     num_dists = len(log_T.shape)
     if num_dists == 2:
@@ -27,6 +33,7 @@ def compute_p_ij(log_T):
     return p_ij
 
 
+# 功能：结合单图与两图边际，构造多图结构一致性代价。
 def compute_l(A, p_i, p_ij, dtype, device='cpu'):
     num_dists = len(A)
     s = []

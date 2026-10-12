@@ -1,0 +1,369 @@
+{
+  "schema_version": "1.0",
+  "generated_on": "2026-08-17",
+  "repository_head": "f72d2e0785dee4c608068dba4168689f8b2a6f61",
+  "scope": {
+    "planetalign_methods": 14,
+    "additional_prepared_methods": [
+      "GADL"
+    ],
+    "unique_methods_audited": 15,
+    "configuration_records": 16,
+    "experiments_rerun_during_persistence": false,
+    "algorithm_or_evaluator_modified": false
+  },
+  "reference_protocol": {
+    "training_anchor_ratio": 0.2,
+    "ranking_evaluator": "ordinary argsort",
+    "direction": "bidirectional mean unless explicitly stated otherwise",
+    "planetalign_splits": 5,
+    "planetalign_runs_per_split": 5,
+    "current_evaluator_caveat": "BaseModel.test currently defaults to optimistic tie handling."
+  },
+  "records": [
+    {
+      "method": "IsoRank",
+      "reference": "PLANETALIGN Table 8",
+      "dataset": "PeMS08",
+      "metric": "Bidirectional ordinary Hits@1/Hits@10/MRR",
+      "paper_result": "0.2537 / 0.7353 / 0.4197",
+      "current_result": "0.253676 / 0.735294 / 0.419663",
+      "gap": "approximately 0.00 pp Hits@1",
+      "protocol_difference": "Completed audit run used data root data, 20% anchors, seed 0, plain graph, alpha=0.4, 100 epochs, and ordinary argsort. Current optimistic default gives Hits@1=0.264706.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": "READY_FOR_M2M",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf",
+        "PlanetAlign/algorithms/isorank.py"
+      ],
+      "notes": "Current result came from the completed audit's terminal-only save_log=false run; no raw log was created."
+    },
+    {
+      "method": "FINAL",
+      "reference": "PLANETALIGN Table 8",
+      "dataset": "PeMS08",
+      "metric": "Bidirectional Hits@1",
+      "paper_result": "0.1985",
+      "current_result": "0.209559",
+      "gap": "+1.11 pp",
+      "protocol_difference": "Existing result is seed 0, plain graph, alpha=0.5, float64, and optimistic tie. The paper used ordinary argsort and aggregated splits/runs.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": "READY_FOR_M2M",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf",
+        ".reference/Alpine/planetalign_benchmark/results/existing_baselines_all_seed0.json"
+      ],
+      "notes": "Phone-Email and Italy results also closely match the PLANETALIGN table."
+    },
+    {
+      "method": "IONE",
+      "reference": "PLANETALIGN Table 8",
+      "dataset": "PeMS08",
+      "metric": "Bidirectional ordinary Hits@1",
+      "paper_result": "0.3824 +/- 0.0252",
+      "current_result": null,
+      "gap": null,
+      "protocol_difference": "No reliable current result. The default implementation is 100 outer epochs times 100000 base updates; shortened runs are not accepted as calibration evidence.",
+      "calibration_status": "UNCHECKED",
+      "m2m_admission": "PENDING_CALIBRATION",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf",
+        "PlanetAlign/algorithms/ione.py"
+      ],
+      "notes": "Missing values are intentionally null."
+    },
+    {
+      "method": "REGAL",
+      "reference": "PLANETALIGN Table 5",
+      "dataset": "18-dataset average",
+      "metric": "Bidirectional Hits@1",
+      "paper_result": "0.079 official",
+      "current_result": "0.080 PLANETALIGN implementation",
+      "gap": "+0.10 pp",
+      "protocol_difference": "Direct official-versus-PLANETALIGN comparison. Current evaluator defaults to optimistic ties; current seed-0 Phone-Email and Italy results corroborate the published reproduction.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": "READY_FOR_M2M",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf",
+        ".reference/Alpine/planetalign_benchmark/results/existing_baselines_all_seed0.json"
+      ],
+      "notes": "REGAL returns embeddings; the established adapter uses emb1 @ emb2.T."
+    },
+    {
+      "method": "CrossMNA",
+      "reference": "PLANETALIGN Table 5",
+      "dataset": "18-dataset average",
+      "metric": "Bidirectional Hits@1",
+      "paper_result": "0.220 official",
+      "current_result": "0.222 PLANETALIGN implementation",
+      "gap": "+0.20 pp",
+      "protocol_difference": "Direct official-versus-PLANETALIGN comparison; current shared evaluator default differs from paper-era ordinary argsort.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": "READY_FOR_M2M",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf"
+      ],
+      "notes": ""
+    },
+    {
+      "method": "NetTrans",
+      "reference": "PLANETALIGN Table 5",
+      "dataset": "18-dataset average",
+      "metric": "Bidirectional Hits@1",
+      "paper_result": "0.373 official",
+      "current_result": "0.374 PLANETALIGN implementation",
+      "gap": "+0.10 pp",
+      "protocol_difference": "Direct official-versus-PLANETALIGN comparison; current shared evaluator default differs from paper-era ordinary argsort.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": "READY_FOR_M2M",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf"
+      ],
+      "notes": ""
+    },
+    {
+      "method": "WAlign",
+      "reference": "PLANETALIGN Table 5",
+      "dataset": "18-dataset average",
+      "metric": "Bidirectional Hits@1",
+      "paper_result": "0.271 official",
+      "current_result": "0.270 PLANETALIGN implementation",
+      "gap": "-0.10 pp",
+      "protocol_difference": "Direct official-versus-PLANETALIGN comparison; current shared evaluator default differs from paper-era ordinary argsort.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": "READY_FOR_M2M",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf"
+      ],
+      "notes": ""
+    },
+    {
+      "method": "BRIGHT",
+      "reference": "PLANETALIGN Table 5",
+      "dataset": "18-dataset average",
+      "metric": "Bidirectional Hits@1",
+      "paper_result": "0.362 official",
+      "current_result": "0.362 PLANETALIGN implementation",
+      "gap": "0.00 pp",
+      "protocol_difference": "Direct official-versus-PLANETALIGN comparison; current shared evaluator default differs from paper-era ordinary argsort.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": "READY_FOR_M2M",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf"
+      ],
+      "notes": ""
+    },
+    {
+      "method": "NeXtAlign",
+      "reference": "PLANETALIGN Table 5",
+      "dataset": "18-dataset average",
+      "metric": "Bidirectional Hits@1",
+      "paper_result": "0.391 official",
+      "current_result": "0.391 PLANETALIGN implementation",
+      "gap": "0.00 pp",
+      "protocol_difference": "Direct official-versus-PLANETALIGN comparison; current shared evaluator default differs from paper-era ordinary argsort.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": "READY_FOR_M2M",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf"
+      ],
+      "notes": ""
+    },
+    {
+      "method": "WLAlign",
+      "reference": "PLANETALIGN Table 5",
+      "dataset": "18-dataset average",
+      "metric": "Bidirectional Hits@1",
+      "paper_result": "0.328 official",
+      "current_result": "0.322 PLANETALIGN implementation",
+      "gap": "-0.60 pp",
+      "protocol_difference": "Direct official-versus-PLANETALIGN comparison. The difference remains within a reasonable reproduction range; current evaluator defaults to optimistic ties.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": "READY_FOR_M2M",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf"
+      ],
+      "notes": ""
+    },
+    {
+      "method": "PARROT",
+      "reference": "PLANETALIGN Table 8",
+      "dataset": "PeMS08",
+      "metric": "Bidirectional ordinary Hits@1/Hits@10/MRR",
+      "paper_result": "0.7647 / 0.9228 / 0.8209",
+      "current_result": "0.757353 / 0.930147 / 0.816960",
+      "gap": "-0.73 pp Hits@1",
+      "protocol_difference": "Completed audit run used data root data, 20% anchors, seed 0, plain graph, and the fixed project-default configuration; no tuning.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": "READY_FOR_M2M",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf",
+        "PlanetAlign/algorithms/parrot.py"
+      ],
+      "notes": "Current result came from the completed audit's terminal-only save_log=false run; no raw log was created."
+    },
+    {
+      "method": "SLOTAlign",
+      "reference": "PLANETALIGN Table 5",
+      "dataset": "18-dataset average",
+      "metric": "Bidirectional Hits@1",
+      "paper_result": "0.200 official",
+      "current_result": "0.200 PLANETALIGN implementation",
+      "gap": "0.00 pp at displayed precision",
+      "protocol_difference": "Direct official-versus-PLANETALIGN comparison; current shared evaluator default differs from paper-era ordinary argsort.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": "READY_FOR_M2M",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf"
+      ],
+      "notes": ""
+    },
+    {
+      "method": "HOT",
+      "reference": "PLANETALIGN Table 5",
+      "dataset": "18-dataset average",
+      "metric": "Bidirectional Hits@1",
+      "paper_result": "0.173 official",
+      "current_result": "0.172 PLANETALIGN implementation",
+      "gap": "-0.10 pp",
+      "protocol_difference": "Table 5 supports the implementation. The internally inconsistent PeMS08 MRR cell in Table 8 is not used as calibration evidence.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": "READY_FOR_M2M",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf"
+      ],
+      "notes": "Table 8 PeMS08 MRR is smaller than Hits@1 and is treated as a reference-table error."
+    },
+    {
+      "method": "JOENA",
+      "reference": "PLANETALIGN Tables 5 and 9",
+      "dataset": "18-dataset average / Douban",
+      "metric": "Bidirectional Hits@1",
+      "paper_result": "0.583 official / 0.6542 +/- 0.0474 Douban",
+      "current_result": "0.583 PLANETALIGN implementation / 0.63184 completed audit Douban run",
+      "gap": "0.00 pp / -2.24 pp",
+      "protocol_difference": "The original JOENA-paper value 0.761 is source-to-target and is not directly comparable with PLANETALIGN's bidirectional mean.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": "READY_FOR_M2M",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/15073_PLANETALIGN_A_Comprehens.pdf",
+        "/Users/yukexin/Documents/akeyan/papers/Joint_Optimal_Transport_And_Embedding_for_na.pdf"
+      ],
+      "notes": "The direct Douban result came from the completed audit's terminal-only run; Table 5 is the durable official comparison."
+    },
+    {
+      "method": "GADL (official implementation)",
+      "reference": "GADL paper",
+      "dataset": "Douban",
+      "metric": "Source-to-target public-optimistic Hits@1",
+      "paper_result": "0.5331",
+      "current_result": "0.537865 +/- 0.003748",
+      "gap": "+0.48 pp",
+      "protocol_difference": "Unsupervised graph-consistent public-code reproduction. The public-code configuration and paper-declared configuration differ.",
+      "calibration_status": "CALIBRATED_WITH_PROTOCOL_GAP",
+      "m2m_admission": null,
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/dual-pass_spectral_encoding.pdf",
+        "logs/gadl_one_to_one/gadl_reference_graph_consistent.json"
+      ],
+      "notes": "Reference-only row; the M2M admission decision is carried by the current PlanetAlign integration row."
+    },
+    {
+      "method": "GADL (PlanetAlign integration)",
+      "reference": "GADL paper",
+      "dataset": "Douban",
+      "metric": "Source-to-target optimistic Hits@1",
+      "paper_result": "0.5331",
+      "current_result": "0.319320 +/- 0.003347",
+      "gap": "-21.38 pp",
+      "protocol_difference": "Tie handling explains only a small part of the gap; graph/spectral preprocessing and training semantics differ from the public implementation.",
+      "calibration_status": "SUSPICIOUS",
+      "m2m_admission": "DO_NOT_USE",
+      "evidence_path": [
+        "/Users/yukexin/Documents/akeyan/papers/dual-pass_spectral_encoding.pdf",
+        "logs/gadl_one_to_one/douban_full_training_seeds_0_1_2.json",
+        "logs/gadl_one_to_one/douban_public_reference_compatible_seeds_0_1_2.json"
+      ],
+      "notes": "Average-tie Hits@1 is 0.291294 +/- 0.003748; the public-compatible PlanetAlign wrapper reaches 0.362254 +/- 0.005978."
+    }
+  ],
+  "coverage_summary": {
+    "confirmed_reasonable_implementations": [
+      "IsoRank",
+      "FINAL",
+      "REGAL",
+      "CrossMNA",
+      "NetTrans",
+      "WAlign",
+      "BRIGHT",
+      "NeXtAlign",
+      "WLAlign",
+      "PARROT",
+      "SLOTAlign",
+      "HOT",
+      "JOENA"
+    ],
+    "calibrated_with_protocol_gap_count": 13,
+    "suspicious": [
+      "GADL (PlanetAlign integration)"
+    ],
+    "unchecked": [
+      "IONE"
+    ],
+    "not_implemented": []
+  },
+  "rerun_list": [
+    {
+      "method": "IONE",
+      "why_rerun": "No reliable current one-to-one result",
+      "dataset": "PeMS08",
+      "config": {
+        "data_root": "data",
+        "training_anchor_ratio": 0.2,
+        "use_attributes": false,
+        "out_dim": 100,
+        "total_epochs": 100,
+        "base_epochs": 100000,
+        "evaluator": "ordinary bidirectional Hits@1/Hits@10/MRR"
+      },
+      "seeds": "0 first; add 1 and 2 only if seed 0 is ambiguous",
+      "expected_purpose": "Determine whether the implementation lies in the reasonable range of 0.3824 +/- 0.0252."
+    }
+  ],
+  "suspicious_implementations": [
+    {
+      "method": "GADL (PlanetAlign integration)",
+      "reference_behavior": "Paper source-to-target Hits@1=0.5331; graph-consistent public-code reproduction=0.537865 +/- 0.003748.",
+      "current_behavior": "Optimistic Hits@1=0.319320 +/- 0.003347; average-tie Hits@1=0.291294 +/- 0.003748.",
+      "implementation_differences": [
+        "PReLU versus public-code identity activation",
+        "dense unweighted BCE versus weighted reconstruction BCE",
+        "constant versus linear-floor functional-map schedule",
+        "functional-map initialization and spectral-basis normalization",
+        "loss-weight mapping",
+        "paper full-graph versus public baseline-compatible graph preprocessing",
+        "paper-declared 256 dimensions, six layers, lr=1e-3 versus public-code 512 dimensions, three layers, lr=1e-4"
+      ],
+      "suspected_causes": "Training and spectral-pipeline semantic differences dominate; tie handling explains only about 2.8 percentage points.",
+      "recommended_minimal_fix": "Keep the current implementation and logs untouched; add an isolated official-behavior adapter/profile that exports the public implementation's similarity matrix, then require three-seed Douban calibration before M2M admission.",
+      "affected_existing_experiments": "Only current/future GADL results and caches; existing GADL logs remain diagnostic or reproduction-only."
+    }
+  ],
+  "m2m_admission_decisions": {
+    "IsoRank": "READY_FOR_M2M",
+    "FINAL": "READY_FOR_M2M",
+    "IONE": "PENDING_CALIBRATION",
+    "REGAL": "READY_FOR_M2M",
+    "CrossMNA": "READY_FOR_M2M",
+    "NetTrans": "READY_FOR_M2M",
+    "WAlign": "READY_FOR_M2M",
+    "BRIGHT": "READY_FOR_M2M",
+    "NeXtAlign": "READY_FOR_M2M",
+    "WLAlign": "READY_FOR_M2M",
+    "PARROT": "READY_FOR_M2M",
+    "SLOTAlign": "READY_FOR_M2M",
+    "HOT": "READY_FOR_M2M",
+    "JOENA": "READY_FOR_M2M",
+    "GADL (PlanetAlign integration)": "DO_NOT_USE"
+  }
+}

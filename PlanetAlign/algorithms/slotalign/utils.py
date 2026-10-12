@@ -1,6 +1,10 @@
+# 文件作用：把任意权重向量投影到非负且和为指定值的单纯形。
+# 数据来源：PlanetAlign/algorithms/slotalign/main.py → SLOTAlign.train() 传入更新后的相似度通道权重。
+
 import numpy as np
 
 
+# 输出结果：返回满足权重约束的向量，使各相似度通道可作为合法混合权重。
 def euclidean_proj_simplex(v, s=1):
     """ Compute the Euclidean projection on a positive simplex
     References

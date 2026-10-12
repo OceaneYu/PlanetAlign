@@ -1,3 +1,8 @@
+# 文件作用：实现 WAlign，用图编码、分布对抗与特征重构学习跨图节点表示。
+# 数据来源：调用者或 scripts/run_m2m_experiments.py → evaluate_algorithm() 将 Dataset 传给 WAlign.train()。
+# 核心依赖：PlanetAlign/algorithms/walign/model.py 的编码器、变换、判别器与重构器；PlanetAlign/algorithms/walign/train.py 的训练辅助函数。
+# 结果去向：返回两侧嵌入和日志，由实验入口转换成节点矩阵。
+
 from typing import Tuple, List, Union
 import itertools
 import torch
@@ -16,6 +21,7 @@ from .train import pred_anchor_links_from_embeddings, train_supervise_align, tra
     train_feature_recon
 
 
+# 功能：配置编码器类型与对抗、监督、特征重构等训练分支。
 class WAlign(BaseModel):
     """Embedding-based method WAlign for unsupervised pairwise attributed network alignment.
     WAlign is proposed by the paper "`Unsupervised Graph Alignment with Wasserstein Distance Discriminator. <https://dl.acm.org/doi/10.1145/3447548.3467332>`_"
@@ -65,6 +71,9 @@ class WAlign(BaseModel):
         self.lr_recon = lr_recon
         self.transform = transform
 
+    # 输入来源：Dataset 的图、可选属性与已有锚点形成初始特征/偏好，伪锚点由当前嵌入预测。
+    # 核心思路：创建图编码器与跨图变换，按 setup 交替调用 PlanetAlign/algorithms/walign/train.py 的重构、对抗或对齐目标。
+    # 输出结果：返回归一化两侧嵌入与日志，最终矩阵由调用者适配。
     def train(self,
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],
@@ -189,6 +198,7 @@ class WAlign(BaseModel):
         emb2 = F.normalize(emb2, p=2, dim=1)
         return emb1, emb2, logger
 
+    # 功能：按 setup 选择 GCNNet、GATNet 或 LGCN 编码器。
     @staticmethod
     def _get_model(in_dim, out_dim, setup):
         if setup == 1:

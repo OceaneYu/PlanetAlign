@@ -1,3 +1,7 @@
+# 文件作用：定义锚点标签传播与节点/上下文嵌入的负采样目标。
+# 数据来源：PlanetAlign/algorithms/wlalign/main.py → WLAlign.train()/train_anchor() 创建模型并传入图特征或训练样本。
+# 结果去向：前向计算返回嵌入或损失，交回训练入口评估与反向传播。
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,6 +10,7 @@ from torch_geometric.nn.conv import GCNConv
 from torch_geometric.utils import to_dense_adj
 
 
+# 功能：沿邻接矩阵逐层传播锚点标签，返回各层的可达标签表示。
 def aggregate_label(x, graph, num_layers=1, device='cpu'):
     label_list = []
     adj = to_dense_adj(graph.edge_index, max_num_nodes=graph.num_nodes).squeeze().to(x.dtype).to(device)
@@ -18,6 +23,7 @@ def aggregate_label(x, graph, num_layers=1, device='cpu'):
     return label_list
 
 
+# 功能：分别保存节点自身、入边上下文和出边上下文的嵌入表。
 class EmbeddingModel(nn.Module):
     def __init__(self, n_vocab, n_embed):
         super().__init__()
@@ -44,6 +50,7 @@ class EmbeddingModel(nn.Module):
         self_vectors = self.self_embed(words)
         return self_vectors
 
+    # 功能：按指定噪声分布抽取节点，并返回三套负例嵌入。
     def forward_noise(self, size, N_SAMPLES, noise_dist):
         noise_words = torch.multinomial(noise_dist, size * N_SAMPLES, replacement=True)
         noise_vectors_self = self.self_embed(noise_words).view(size, N_SAMPLES, self.n_embed)
@@ -52,10 +59,12 @@ class EmbeddingModel(nn.Module):
         return noise_vectors_self, noise_vectors_in, noise_vectors_out
 
 
+# 功能：鼓励真实上下文配对相近、负例配对分离。
 class NegativeSamplingLoss(nn.Module):
     def __init__(self):
         super(NegativeSamplingLoss, self).__init__()
 
+    # 输出结果：汇总入边、出边及负例的 log-sigmoid 项，返回训练损失。
     @staticmethod
     def forward(self_in_vectors, self_out_vectors, target_input_vectors, source_output_vectors,
                 noise_vectors_self, noise_vectors_input, noise_vectors_output,

@@ -1,3 +1,8 @@
+# 文件作用：实现 SLOTAlign，联合选择图相似度通道并优化无监督最优传输。
+# 数据来源：调用者或 scripts/run_m2m_experiments.py → evaluate_algorithm() 将 Dataset 传给 SLOTAlign.train()。
+# 核心依赖：PlanetAlign/algorithms/slotalign/model.py → ParamFreeGraphConv；PlanetAlign/algorithms/slotalign/utils.py → euclidean_proj_simplex()。
+# 结果去向：返回 S 与日志，由实验入口提取节点分数后解码。
+
 from typing import Optional, Union, Tuple, List
 import time
 import torch
@@ -15,6 +20,7 @@ from .model import ParamFreeGraphConv
 from .utils import euclidean_proj_simplex
 
 
+# 功能：配置图相似度通道、无参数卷积层数及传输优化参数。
 class SLOTAlign(BaseModel):
     """OT-based method SLOTAlign for unsupervised pairwise attributed network alignment.
     SLOTAlign is proposed by the paper "`Robust Attributed Graph Alignment via Joint Structure Learning and Optimal Transport. <https://doi.org/10.1109/ICDE55515.2023.00129>`_"
@@ -48,6 +54,9 @@ class SLOTAlign(BaseModel):
         self.epsilon = epsilon
         self.step_size = step_size
 
+    # 输入来源：两侧图结构与可选属性用于通道构造；测试锚点只用于每轮日志指标。
+    # 核心思路：构建多通道图内相似度，交替更新通道权重与 gw_step_optimize() 的传输矩阵。
+    # 输出结果：返回 S 与日志；训练不使用锚点优化，测试节点对用于记录指标。
     def train(self,
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],
@@ -164,6 +173,7 @@ class SLOTAlign(BaseModel):
         self.S = S
         return S, logger
 
+    # 功能：结合邻接、节点特征及多层无参数卷积，堆叠图内节点相似度通道。
     def get_intra_graph_similarity(self, graph, gcn, anchor_nodes, use_attr):
         node_attr = graph.x if use_attr else torch.ones(graph.num_nodes, 1)
         if anchor_nodes.shape[0] > 0:
@@ -192,6 +202,7 @@ class SLOTAlign(BaseModel):
 
         return intra_sim_tensor
 
+    # 功能：依据两图当前加权相似度迭代更新结构传输矩阵，交回 train()。
     @torch.no_grad()
     def gw_step_optimize(self,
                          cost_s: torch.Tensor,

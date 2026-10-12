@@ -1,14 +1,20 @@
+# 文件作用：定义 BRIGHT 的结构/属性编码器与锚点排名损失。
+# 数据来源：PlanetAlign/algorithms/bright/main.py → BRIGHT.train() 创建模型并传入图特征或训练样本。
+# 结果去向：前向计算返回嵌入或损失，交回训练入口评估与反向传播。
+
 import torch
 import torch.nn.functional as F
 from torch_geometric.nn.conv import GCNConv
 
 
+# 功能：将锚点 RWR 特征通过共享线性层映射为归一化节点嵌入。
 class BrightUNet(torch.nn.Module):
     r"""BRIGHT-U model for plain network alignment."""
     def __init__(self, in_dim, out_dim):
         super(BrightUNet, self).__init__()
         self.lin1 = torch.nn.Linear(in_dim, out_dim)
 
+    # 输出结果：两侧结构嵌入，交给 MarginalRankingLoss 或入口的余弦评估。
     def forward(self, rwr_emb1, rwr_emb2, *args, **kwargs):
         pos_emd1 = self.lin1(rwr_emb1)
         pos_emd2 = self.lin1(rwr_emb2)
@@ -17,6 +23,7 @@ class BrightUNet(torch.nn.Module):
         return pos_emd1, pos_emd2
 
 
+# 功能：结合 RWR 位置表示和共享 GCN 的属性表示。
 class BrightANet(torch.nn.Module):
     r"""BRIGHT-A model for attributed network alignment."""
     def __init__(self, rwr_dim, in_dim, out_dim):
@@ -25,6 +32,7 @@ class BrightANet(torch.nn.Module):
         self.shared_gcn = SharedGCN(in_dim, out_dim)
         self.combine = torch.nn.Linear(2 * out_dim, out_dim)
 
+    # 输出结果：返回融合后并归一化的两侧节点嵌入。
     def forward(self, rwr_emb1, rwr_emb2, x1, x2, edge_index1, edge_index2):
         pos_emd1 = self.lin(rwr_emb1)
         pos_emd2 = self.lin(rwr_emb2)
@@ -43,24 +51,28 @@ class BrightANet(torch.nn.Module):
         return emd1, emd2
 
 
+# 功能：用两层图卷积在邻居间传播节点属性。
 class SharedGCN(torch.nn.Module):
     def __init__(self, feat_dim, hid_dim):
         super(SharedGCN, self).__init__()
         self.conv1 = GCNConv(feat_dim, hid_dim)
         self.conv2 = GCNConv(hid_dim, hid_dim)
 
+    # 功能：按 edge_index 两次聚合节点属性，供 BrightANet 融合。
     def forward(self, x, edge_index):
         x = self.conv1(x, edge_index)
         x = self.conv2(x, edge_index)
         return x
 
 
+# 功能：让锚点对应比采样的不对应节点更接近，形成监督排名目标。
 class MarginalRankingLoss(torch.nn.Module):
     def __init__(self, k, margin, **kwargs):
         super(MarginalRankingLoss, self).__init__()
         self.k = k
         self.margin = margin
 
+    # 功能：从当前余弦距离中选较难区分的负例，供 forward() 计算排名差距。
     def neg_sampling(self, out1, out2, anchor1, anchor2):
         anchor_embeddings_1 = out1[anchor1]
         anchor_embeddings_2 = out2[anchor2]
@@ -75,6 +87,7 @@ class MarginalRankingLoss(torch.nn.Module):
 
         return neg_samples_1, neg_samples_2
 
+    # 功能：对正锚点与两方向负例距离施加 margin 约束，返回训练损失。
     def forward(self, out1, out2, anchor_links):
         anchor1, anchor2 = anchor_links[:, 0], anchor_links[:, 1]
 

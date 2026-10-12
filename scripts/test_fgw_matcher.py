@@ -1,3 +1,7 @@
+# 文件作用：在固定 PARROT 矩阵上比较 Hungarian、邻居修正与 FGW 组匹配，是实验脚本而非单元测试。
+# 核心依赖：PlanetAlign/m2m/base.py 的训练/温度选择，以及 PlanetAlign/m2m/quotient.py → evaluate_quotient_blind() 的 matcher 选项。
+# 结果去向：main() 将不同匹配设置的 MicroF1 与锚点一致性写入 --out。
+
 """Paired test: FGW quotient matcher vs Hungarian, over a frozen PARROT S.
 
 The quotient-level consistency principle is the Gromov-Wasserstein structure
@@ -28,8 +32,8 @@ import torch
 
 from PlanetAlign.data import Dataset
 from PlanetAlign.m2m import use_full_anchor_supervision
-from PlanetAlign.m2m_base import train_base_S, arbitrate_sharpen
-from PlanetAlign.m2m_quotient import (entity_anchor_agreement, evaluate_quotient_blind,
+from PlanetAlign.m2m.base import train_base_S, arbitrate_sharpen
+from PlanetAlign.m2m.quotient import (entity_anchor_agreement, evaluate_quotient_blind,
                                       quotient_decode)
 from PlanetAlign.utils import get_anchor_pairs
 
@@ -38,6 +42,7 @@ DATASETS = ["douban_m2m", "cora_m2m", "airport_m2m", "pems08_m2m", "ppi_m2m",
 ALPHAS = [0.1, 0.25, 0.5, 0.75]
 
 
+# 功能：使用指定解码参数预测并评分，再从原预测计算训练锚点一致性。
 def score(S, g_src, g_tgt, anchors, gt, has_attr, **decode_kw):
     sc, pred, _ = evaluate_quotient_blind(
         S, gt, g_src, g_tgt, metrics=["MicroF1"], return_predictions=True,
@@ -46,6 +51,7 @@ def score(S, g_src, g_tgt, anchors, gt, has_attr, **decode_kw):
     return sc["MicroF1"], corr
 
 
+# 功能：按数据/种子固定 PARROT 的 S，逐匹配方式调用 score()，保存可直接比较的记录。
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--root", type=Path, default=Path("data/m2m_no_overlap"))

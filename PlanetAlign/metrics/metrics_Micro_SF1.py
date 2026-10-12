@@ -1,3 +1,7 @@
+# 文件作用：累计所有实体的正确、错误和漏预测节点数，再计算整体集合 F1。
+# 数据来源：PlanetAlign/metrics/many_to_many.py → many_to_many_scores() 调用 micro_f1_score()。
+# 阅读建议：先读 micro_f1_score() → global_set_f1()；evaluate_pred_folder() 是单独的文件评估与绘图工具。
+
 import json
 import re
 from pathlib import Path
@@ -46,6 +50,7 @@ def count_tp_fp_fn(pred_set: List[int], gt_set: List[int]) -> Tuple[int, int, in
     return tp, fp, fn
 
 
+# 输出结果：返回整体 F1、精确率、召回率及 TP/FP/FN 计数；默认比较 tgt 集合。
 def global_set_f1(
     gt_entities: Dict[str, Dict[str, List[int]]],
     pred_entities: Dict[str, Dict[str, List[int]]],
@@ -93,6 +98,7 @@ def global_set_f1(
     }
 
 
+# 功能：批量读取预测 JSON，按文件误差编号评估，输出 F1 曲线和 CSV。
 def evaluate_pred_folder(
     gt_path: Path,
     pred_dir: Path,
@@ -188,6 +194,7 @@ def evaluate_pred_folder(
     print(f"Saved plot: {out_png}")
 
 # 直接调用 global_set_f1 计算 Micro F1，一个明确的包装函数，方便外部调用。
+# 功能：调用 global_set_f1(key="tgt")，仅返回 F1 标量给统一入口。
 def micro_f1_score(
     gt_entities: Dict[str, Dict[str, List[int]]],
     pred_entities: Dict[str, Dict[str, List[int]]],

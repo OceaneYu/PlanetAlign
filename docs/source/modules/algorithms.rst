@@ -24,3 +24,7 @@ PlanetAlign.algorithms
     SLOTAlign
     HOT
     JOENA
+    M2MAlign
+    TGAE
+    GADL
+    Alpine

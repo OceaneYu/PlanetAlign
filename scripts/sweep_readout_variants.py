@@ -1,3 +1,7 @@
+# 文件作用：在相同缓存矩阵上比较组评分、邻居一致性与异常成员剔除等解码变体。
+# 数据来源：load_cells() 读取三个 JOENA 分支的缓存并取均值，同时加载对应 Dataset 和实体 JSON。
+# 核心依赖：PlanetAlign/m2m/quotient.py → evaluate_quotient_blind()；结果按数据集/种子汇总打印。
+
 """Multi-seed sweep of QuotientDecode readout variants over cached couplings.
 
 Evaluates decode-only variants (group scoring mode, quotient neighbor
@@ -26,7 +30,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "planeta
 import torch
 
 from PlanetAlign.data import Dataset
-from PlanetAlign.m2m_quotient import evaluate_quotient_blind
+from PlanetAlign.m2m.quotient import evaluate_quotient_blind
 from PlanetAlign.utils import get_anchor_pairs
 
 BRANCH_TAGS = ["", "_pc-u1.0-a1.0-t0.1", "_pc-u1.0-a1.0-t0.1-gm0.5"]
@@ -40,6 +44,7 @@ CELLS = [
 CACHE = Path("logs/m2m_diag/S_cache")
 
 
+# 输出结果：只返回缓存齐全的数据/种子单元，每个单元含固定 S、图、训练锚点和真实实体。
 def load_cells():
     cells = []
     for name, root, seeds in CELLS:
@@ -57,6 +62,7 @@ def load_cells():
     return cells
 
 
+# 功能：把一组解码参数用于所有单元，计算各数据集平均 MicroF1 并返回汇总。
 def run_variant(cells, label, **kw):
     per_ds = {}
     t0 = time.perf_counter()
@@ -72,6 +78,7 @@ def run_variant(cells, label, **kw):
     return means, overall
 
 
+# 功能：加载单元并逐变体调用 run_variant()，比较结果而不重新训练基础算法。
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--stage", choices=["scores", "refine"], default="scores")

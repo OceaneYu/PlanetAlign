@@ -1,3 +1,7 @@
+# 文件作用：多种子比较基础算法，检查按训练锚点选算法和温度的效果。
+# 核心依赖：PlanetAlign/m2m/base.py → train_base_S()/arbitrate_sharpen()；PlanetAlign/m2m/quotient.py 的锚点一致性与盲评分。
+# 结果去向：run_one() 的表格写入 --out，供 scripts/aggregate_unified_grid.py → main() 汇总。
+
 """Is the base aligner an anchor-arbitrable axis? — the unification experiment.
 
 For every dataset and seed, train each base in the roster, sharpen-arbitrate it
@@ -32,8 +36,8 @@ import torch
 
 from PlanetAlign.data import Dataset
 from PlanetAlign.m2m import use_full_anchor_supervision
-from PlanetAlign.m2m_base import train_base_S, arbitrate_sharpen
-from PlanetAlign.m2m_quotient import (entity_anchor_agreement, evaluate_quotient_blind,
+from PlanetAlign.m2m.base import train_base_S, arbitrate_sharpen
+from PlanetAlign.m2m.quotient import (entity_anchor_agreement, evaluate_quotient_blind,
                                       quotient_decode)
 from PlanetAlign.utils import get_anchor_pairs
 
@@ -42,6 +46,8 @@ DEFAULT_DATASETS = ["douban_m2m", "cora_m2m", "airport_m2m", "pems08_m2m", "ppi_
                     "arenas_m2m", "phone-email_m2m", "italy_m2m", "foursquare-twitter_m2m"]
 
 
+# 核心思路：在一组数据/种子上逐算法训练、温度选择、解码，再分别记录锚点信号和真实实体 MicroF1。
+# 输出结果：返回候选记录表，真实分数用于报告，不作为训练输入。
 def run_one(root: Path, name: str, bases: List[str], seed: int) -> Dict:
     ds = Dataset(root=root, name=name, train_ratio=0.2, seed=seed)
     use_full_anchor_supervision(ds)
@@ -68,6 +74,7 @@ def run_one(root: Path, name: str, bases: List[str], seed: int) -> Dict:
     return out
 
 
+# 功能：循环数据集与种子调用 run_one()，打印比较表并保存 JSON。
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--root", type=Path, default=Path("data/m2m_no_overlap"))

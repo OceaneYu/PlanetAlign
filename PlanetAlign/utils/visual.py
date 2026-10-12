@@ -1,3 +1,7 @@
+# 文件作用：将节点匹配矩阵画成热力图或高分位置散点图，便于人工观察。
+# 数据来源：调用者直接传入算法生成的 torch.Tensor 或 NumPy 矩阵。
+# 结果去向：按参数显示图像或保存到指定路径；这些函数不参与训练与解码。
+
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -5,6 +9,7 @@ import seaborn as sns
 from typing import Union, Optional
 
 
+# 功能：将完整匹配矩阵绘成热力图，可选按行或列归一化。
 def plot_alignment_matrix(
         P: Union[torch.Tensor, np.ndarray],
         title: str = "Alignment Matrix",
@@ -77,6 +82,7 @@ def plot_alignment_matrix(
     plt.close()
 
 
+# 功能：找出矩阵中最高的 k 个分数，仅绘制这些节点对的位置与强度。
 def plot_alignment_matrix_topk(
     P: Union[torch.Tensor, np.ndarray],
     k: int = 1000,

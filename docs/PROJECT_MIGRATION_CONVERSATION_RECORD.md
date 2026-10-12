@@ -22,7 +22,7 @@ arbitrate_sharpen(S)            # raw vs softmax(S/T)，按机会校正锚点一
         │
 QuotientDecode(S)               # 商图读出（基座无关）
         │
-    实体映射 → 盲评 ACS / MSF1 / MicroF1 / M2M-SGS / M2M-EGS
+    实体映射 → Macro Set-F1 / Micro Set-F1 / AUIS / AUCS
 ```
 
 一句话核心：**一对一排他性先验没有错，而是被放在了错误的节点层**。M2M 的正确学习对象是"每图一个等价类划分 + 商图间一一匹配"；分组证据早已藏在任何 1-1 对齐器的 `S` 里（同实体节点的 `S` 行近共线）。
@@ -59,7 +59,7 @@ QuotientDecode(S)               # 商图读出（基座无关）
 
 1. **训练锚点二次切分（名义 20% 实为 4%）** → `PlanetAlign.m2m.use_full_anchor_supervision(dataset)`：M2M 的 `anchor_links` 本就是原始 20% 训练切分，实体真值来自原始测试切分（已验证 9 数据集监督∩评测=∅）。所有脚本默认走修正协议（缓存标签 `_fa`）。见 §5.11。
 2. **`algo.test()` Hits 测错集合** → 改测构成 M2M 实体的原始测试锚点；全量锚点协议下用 held-out 1-1 实体 Hits 诊断。
-3. **跨基座不公平对比** → 受控消融固定同一个 `S`；基座作为一等**可仲裁轴**（`m2m_base.py`）盲选，不再手工挑。见 §5.13。
+3. **跨基座不公平对比** → 受控消融固定同一个 `S`；基座作为一等**可仲裁轴**（`m2m/base.py`）盲选，不再手工挑。见 §5.13。
 4. **四数据集"不可解"误判** → 系探测缺陷（probe 名单缺 PARROT + quick 预算），非数据缺陷；补全后四集全部复活，"拆分摧毁结构信号"的机理判断撤回，基准 v2 提议撤回。见 §5.11.1。
 5. **flickr-lastfm 生成器泄漏** → 训练锚点对 (4227,11939) 漏进测试实体 e62；根因是原始锚点表重复行 + 生成器只在测试集内去重。已修：跨集合端点排除 + 构建末端硬护栏（泄漏即抛错）+ 回归测试；两 root 复扫 18/18 干净。见 §5.12。
 6. **缓存键碰撞（overlap/no-overlap 同名）** → 缓存键含数据集名 + 协议标签 `_fa` + 种子 + epochs；overlap/no-overlap 走不同 root 目录，不再串用。
@@ -81,13 +81,13 @@ QuotientDecode(S)               # 商图读出（基座无关）
 
 | 作用 | 文件 |
 |---|---|
-| QuotientDecode（核心读出） | `PlanetAlign/m2m_quotient.py` |
-| 基座轴（PARROT 等）+ 锐化仲裁 | `PlanetAlign/m2m_base.py` |
-| JOENA-PC / 组级边际（训练侧） | `PlanetAlign/m2m_contrastive.py` |
-| 盲协议与分组发现 | `PlanetAlign/m2m_blind.py` |
-| M2M 通用接口（`use_full_anchor_supervision` 等） | `PlanetAlign/m2m.py` |
+| QuotientDecode（核心读出） | `PlanetAlign/m2m/quotient.py` |
+| 基座轴（PARROT 等）+ 锐化仲裁 | `PlanetAlign/m2m/base.py` |
+| JOENA-PC / 组级边际（训练侧） | `PlanetAlign/m2m/contrastive.py` |
+| 盲协议与分组发现 | `PlanetAlign/m2m/blind.py` |
+| M2M 通用接口（`use_full_anchor_supervision` 等） | `PlanetAlign/m2m/core.py` |
 | M2M 数据生成 + 泄漏硬护栏 | `PlanetAlign/utils/many2many_builder.py` |
-| 指标 | `PlanetAlign/metrics/`（`metrics_ACS.py`、`metrics_MSF1.py`、`metrics_Micro_SF1.py`、`metrics_m2m_SGS.py`、`metrics_m2m_EGS.py`、`many_to_many.py`） |
+| 指标 | `PlanetAlign/metrics/`（`metrics_MSF1.py`、`metrics_Micro_SF1.py`、`metrics_AUIS.py`、`metrics_AUCS.py`、`many_to_many.py`） |
 | 主实验 runner | `scripts/run_quotient_compare.py` |
 | 基座探测 / 基座选择网格 | `scripts/probe_base_aligners.py`、`validate_base_selection.py`、`compare_parrot_vs_ensemble.py`、`aggregate_unified_grid.py` |
 | 读出变体配对多种子扫描 | `scripts/sweep_readout_variants.py` |
@@ -168,7 +168,7 @@ logs/m2m_diag/*.json    logs/m2m_diag/S_cache/    logs/m2m_diag/multiseed/
 git status --short
 python -m unittest discover -s tests -p "test_*.py"     # 期望 52 passing
 python scripts/run_quotient_compare.py --help
-python -c "from PlanetAlign import m2m, m2m_base, m2m_quotient, m2m_blind, m2m_contrastive; print('OK')"
+python -c "from PlanetAlign import m2m; from PlanetAlign.m2m import base, quotient, blind, contrastive; print('OK')"
 ```
 
 确认：PyTorch / PyG / SciPy / POT 可用；`data/m2m_no_overlap/*_gt_many2many.json` 与 `.pt` 成对存在；M2M 源码已提交（当前分支已全部提交并推送至 PR #2）。

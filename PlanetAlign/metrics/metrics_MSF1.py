@@ -1,3 +1,7 @@
+# 文件作用：先逐实体比较预测与真实节点集合，再平均各实体的 F1，使每个实体权重相同。
+# 数据来源：PlanetAlign/metrics/many_to_many.py → many_to_many_scores() 通过 macro_f1_score() 传入实体字典。
+# 阅读建议：先看 macro_f1_score() → macro_set_f1()；默认比较 tgt 集合，编号须由调用者先适配。
+
 import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Any
@@ -45,6 +49,7 @@ def f1_from_sets(pred_set: List[int], gt_set: List[int]) -> Tuple[float, float, 
     return f1, precision, recall
 
 
+# 输出结果：返回宏平均 F1、精确率、召回率及缺失预测数；缺失实体按空集合计算。
 def macro_set_f1(
     gt_entities: Dict[str, Dict[str, List[int]]],
     pred_entities: Dict[str, Dict[str, List[int]]],
@@ -95,6 +100,7 @@ def macro_set_f1(
     }
 
 
+# 流程位置：独立文件夹评估入口，逐个读取 pred_err_*.json 并打印宏平均分数。
 def evaluate_folder(
     gt_path: Path,
     pred_dir: Path,
@@ -120,6 +126,7 @@ def evaluate_folder(
         print(f"{pf.name:20s}  MSF1={res['MSF1']:.4f}  MP={res['MacroPrecision']:.4f}  MR={res['MacroRecall']:.4f}")
 
 # 直接调用 macro_set_f1 计算 Macro Set F1，一个明确的包装函数，方便外部调用。
+# 功能：调用 macro_set_f1(key="tgt")，仅返回 F1 标量给统一指标入口。
 def macro_f1_score(
     gt_entities: Dict[str, Dict[str, List[int]]],
     pred_entities: Dict[str, Dict[str, List[int]]],

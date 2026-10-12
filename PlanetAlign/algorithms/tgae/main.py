@@ -1,3 +1,8 @@
+# 文件作用：实现 TGAE 图自编码对齐，训练共享编码器重构两图并产生节点相似度。
+# 核心依赖：PlanetAlign/algorithms/tgae/model.py → TGAENetwork；PlanetAlign/utils/anchors.py → get_anchor_pairs() 提取可选监督。
+# 结果去向：train() 返回 self.S 与日志，scripts/run_m2m_experiments.py → evaluate_algorithm() 可将它交给实体解码。
+# 阅读建议：先看 train() → _refresh_alignment()，再看重构损失与 _build_features()。
+
 import os
 import time
 from typing import Dict, List, Optional, Tuple, Union
@@ -8,20 +13,20 @@ import torch.nn.functional as F
 
 from PlanetAlign.algorithms.base_model import BaseModel
 from PlanetAlign.data import Dataset
-from PlanetAlign.metrics import hits_ks_scores, mrr_score, similarity_to_pred_entities
+from PlanetAlign.metrics import hits_ks_scores, mrr_score
 from PlanetAlign.utils import get_anchor_pairs
 
 from .model import TGAENetwork
 
 
+# 功能：提供共享图编码器与可选训练锚点损失的一对一矩阵接口。
 class TGAE(BaseModel):
     """Transferable Graph Autoencoder for pairwise network alignment.
 
     This class adapts the T-GAE graph autoencoder into PlanetAlign's standard
     ``BaseModel`` interface. It trains the shared encoder by reconstructing
-    each input graph, then aligns nodes by embedding distance. The
-    ``predict_many_to_many`` method ports T-GAE's local target-side expansion
-    idea for many-to-many evaluation.
+    each input graph, then aligns nodes by embedding distance. Its final
+    similarity matrix ``S`` can be passed to a blind M2M decoder.
     """
 
     def __init__(self,
@@ -55,8 +60,10 @@ class TGAE(BaseModel):
         self.reconstruction_neg_ratio = reconstruction_neg_ratio
         self.model: Optional[TGAENetwork] = None
         self.embeddings: Dict[int, torch.Tensor] = {}
-        self._last_gids: Tuple[int, int] | None = None
 
+    # 输入来源：Dataset 的图边与可选属性生成编码输入；可选监督只使用 train_data，test_data 用于日志。
+    # 核心思路：缓存图特征、归一化邻接与边，按边重构训练网络，并可叠加训练锚点的对齐损失。
+    # 输出结果：_refresh_alignment() 更新 self.S，最终返回矩阵与日志。
     def train(self,
               dataset: Dataset,
               gids: Union[List[int], Tuple[int, ...]],
@@ -70,7 +77,6 @@ class TGAE(BaseModel):
         assert total_epochs >= 1
         assert eval_interval >= 1
         gid1, gid2 = gids
-        self._last_gids = (gid1, gid2)
 
         logger = self.init_training_logger(
             dataset,
@@ -155,90 +161,7 @@ class TGAE(BaseModel):
         self._refresh_alignment(dataset, gid1, gid2, caches)
         return self.S, logger
 
-    def predict_many_to_many(self,
-                             gt_entities: Dict[str, Dict[str, List[int]]],
-                             source_key: str = "src",
-                             target_key: str = "tgt",
-                             mode: str = "local_expand",
-                             relax_ratio: float = 1.03,
-                             target_dup_sim_ratio: float = 1.03,
-                             max_extra_targets: int = 3) -> Dict[str, Dict[str, List[int]]]:
-        """Build many-to-many predictions from the trained similarity matrix.
-
-        ``mode='local_expand'`` follows the T-GAE M2M extension: choose a
-        strongest target-side backbone match, then add nearby target nodes that
-        are also close to the source group. ``mode='gt_size_topk'`` uses the
-        repository's common top-k conversion for comparison with other models.
-        """
-        if self.S is None:
-            raise RuntimeError("Model is not trained yet, call train() first")
-        if mode == "gt_size_topk":
-            return similarity_to_pred_entities(
-                self.S,
-                gt_entities,
-                source_key=source_key,
-                target_key=target_key,
-            )
-        if mode != "local_expand":
-            raise ValueError("mode must be either 'local_expand' or 'gt_size_topk'")
-        if relax_ratio < 1.0:
-            raise ValueError("relax_ratio must be >= 1.0")
-        if target_dup_sim_ratio < 1.0:
-            raise ValueError("target_dup_sim_ratio must be >= 1.0")
-        if max_extra_targets < 0:
-            raise ValueError("max_extra_targets must be non-negative")
-
-        similarity = self.S.detach().cpu()
-        if len(self.embeddings) < 2:
-            raise RuntimeError("Embeddings are unavailable")
-        if self._last_gids is None:
-            raise RuntimeError("Model is not trained yet, call train() first")
-        target_emb = self.embeddings[self._last_gids[1]].detach().cpu()
-        target_dist = torch.cdist(target_emb, target_emb, p=2)
-        pred_entities: Dict[str, Dict[str, List[int]]] = {}
-
-        for eid, gt_item in gt_entities.items():
-            pred_item = {
-                key: [int(v) for v in value] if isinstance(value, list) else value
-                for key, value in gt_item.items()
-            }
-            src_nodes = [int(n) for n in gt_item.get(source_key, [])]
-            src_nodes = [n for n in src_nodes if 0 <= n < similarity.shape[0]]
-            if not src_nodes:
-                pred_item[target_key] = []
-                pred_entities[eid] = pred_item
-                continue
-
-            group_scores = similarity[src_nodes].mean(dim=0)
-            base_target = int(torch.argmax(group_scores).item())
-            targets = [base_target]
-            if max_extra_targets > 0:
-                source_dist = -torch.log(group_scores.clamp_min(1e-12))
-                base_source_dist = float(source_dist[base_target].item())
-                base_target_dist = target_dist[base_target]
-                order = torch.argsort(base_target_dist).tolist()
-                for cand in order:
-                    cand = int(cand)
-                    if cand == base_target:
-                        continue
-                    close_to_source = float(source_dist[cand].item()) <= base_source_dist * relax_ratio
-                    nearest_target_dist = float(base_target_dist[cand].item())
-                    if nearest_target_dist <= 0:
-                        close_to_target = False
-                    else:
-                        best_non_self = base_target_dist[base_target_dist > 0]
-                        ref_dist = float(best_non_self.min().item()) if best_non_self.numel() else nearest_target_dist
-                        close_to_target = nearest_target_dist <= ref_dist * target_dup_sim_ratio
-                    if close_to_source and close_to_target:
-                        targets.append(cand)
-                    if len(targets) >= max_extra_targets + 1:
-                        break
-
-            pred_item[target_key] = targets
-            pred_entities[eid] = pred_item
-
-        return pred_entities
-
+    # 功能：在评估模式下重算两侧嵌入，将向量距离的负指数保存为 S。
     def _refresh_alignment(self, dataset, gid1, gid2, caches):
         assert self.model is not None
         self.model.eval()
@@ -255,6 +178,7 @@ class TGAE(BaseModel):
             self.embeddings = embeddings
         self.model.train()
 
+    # 功能：将真实边和随机负例边的嵌入内积分成正负标签，计算重构损失。
     def _sampled_reconstruction_loss(self,
                                      emb: torch.Tensor,
                                      pos_edges: torch.Tensor,
@@ -286,6 +210,7 @@ class TGAE(BaseModel):
         ])
         return F.binary_cross_entropy_with_logits(logits, labels)
 
+    # 功能：以训练锚点构造双向分类目标，让对应节点嵌入相近。
     def _anchor_alignment_loss(self,
                                emb1: torch.Tensor,
                                emb2: torch.Tensor,
@@ -313,6 +238,7 @@ class TGAE(BaseModel):
         loss_rtl = F.cross_entropy(logits_rtl, target_to_src)
         return 0.5 * (loss_ltr + loss_rtl)
 
+    # 功能：组合结构统计与可选归一化节点属性，供共享编码器输入。
     def _build_features(self, graph, use_attr: bool) -> torch.Tensor:
         structural = self._structural_features(graph).to(self.dtype)
         if use_attr and graph.x is not None:
@@ -321,6 +247,7 @@ class TGAE(BaseModel):
             return torch.cat([structural, attr], dim=1)
         return structural
 
+    # 功能：按度数、邻居度数统计与局部连接等构造可跨图比较的标准化结构特征。
     def _structural_features(self, graph) -> torch.Tensor:
         num_nodes = graph.num_nodes
         src = graph.edge_index[0].detach().cpu().long()
@@ -361,6 +288,7 @@ class TGAE(BaseModel):
         std = features.std(dim=0, keepdim=True).clamp_min(1e-6)
         return (features - mean) / std
 
+    # 输出结果：加自环并归一化的稀疏邻接矩阵，供图编码器聚合邻居。
     def _normalized_sparse_adj(self, graph) -> torch.Tensor:
         num_nodes = graph.num_nodes
         src = graph.edge_index[0].detach().cpu().long()

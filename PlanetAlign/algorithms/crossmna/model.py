@@ -1,7 +1,12 @@
+# 文件作用：定义共享节点嵌入、图层嵌入与负采样目标。
+# 数据来源：PlanetAlign/algorithms/crossmna/main.py → CrossMNA.train() 创建模型并传入图特征或训练样本。
+# 结果去向：前向计算返回嵌入或损失，交回训练入口评估与反向传播。
+
 import torch
 import torch.nn.functional as F
 
 
+# 功能：共同维护节点表示与图层变换参数，供多图样本使用。
 class MultiNetworkEmb(torch.nn.Module):
     def __init__(self, num_of_nodes, batch_size, K, node_emb_dims, num_layer, layer_emb_dims):
         super(MultiNetworkEmb, self).__init__()
@@ -23,6 +28,7 @@ class MultiNetworkEmb(torch.nn.Module):
         self.L_embedding.data = F.normalize(self.L_embedding.data, p=2, dim=1)
         self.W.data = F.normalize(self.W.data, p=2, dim=1)
 
+    # 功能：按节点对、图编号和正负标签计算 log-sigmoid 损失，返回标量。
     def forward(self, u_i, u_j, this_layer, label):
         # Step 1: Look up embeddings
         u_i_embedding = self.embedding[u_i]

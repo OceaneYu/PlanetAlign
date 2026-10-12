@@ -1,3 +1,7 @@
+# 文件作用：把调用者提供的训练损失、Hits@K 与 MRR 历史画成曲线。
+# 结果去向：使用 Matplotlib 显示曲线，提供 save_path 时同时保存图像。
+# 阅读建议：按历史数据类型选择 plot_loss_curve()、plot_hits_curve() 或 plot_mrr_curve()。
+
 from typing import Optional, Union
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -5,6 +9,7 @@ import matplotlib.ticker as mticker
 import numpy as np
 
 
+# 功能：按轮次绘制一组或多组损失历史，适配纵轴刻度以方便比较。
 def plot_loss_curve(loss_logs: dict,
                     save_path: Optional[Union[str, Path]] = None,
                     title: str = 'Loss vs Epochs',
@@ -90,6 +95,7 @@ def plot_loss_curve(loss_logs: dict,
     plt.show()
 
 
+# 功能：按轮次绘制一个或多个 K 的节点命中率曲线。
 def plot_hits_curve(hits_logs: dict,
                     save_path: Optional[Union[str, Path]] = None,
                     title: str = 'Hits@K Curve',
@@ -139,6 +145,7 @@ def plot_hits_curve(hits_logs: dict,
     plt.show()
 
 
+# 功能：按轮次绘制排名倒数均值的变化，输入是已有历史而非匹配矩阵。
 def plot_mrr_curve(mrr_logs: Union[list, np.ndarray],
                    save_path: Optional[Union[str, Path]] = None,
                    title: str = 'MRR Curve',

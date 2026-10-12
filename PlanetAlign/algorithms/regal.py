@@ -1,3 +1,8 @@
+# 文件作用：实现 REGAL，将局部结构统计与可选节点属性压缩为可跨图比较的嵌入。
+# 数据来源：PlanetAlign/m2m/base.py → train_base_S() 将 Dataset 传入 REGAL.train()。
+# 结果去向：train() 返回两侧嵌入和日志，PlanetAlign/m2m/base.py → _extract_s(mode="embs-cos") 再算余弦矩阵。
+# 阅读建议：train() → get_xnetmf_embedding() → get_structural_embedding()，区分嵌入与匹配矩阵。
+
 from typing import List, Tuple, Union
 import torch
 import numpy as np
@@ -14,6 +19,7 @@ from PlanetAlign.utils import get_anchor_pairs
 from .base_model import BaseModel
 
 
+# 功能：提供不依赖训练锚点学习表示的对齐算法，锚点仅用于日志评估。
 class REGAL(BaseModel):
     r"""Embedding-based method REGAL for unsupervised pairwise attributed network alignment.
     REGAL is proposed by the paper: "`REGAL: Representation Learning-based Graph Alignment. <https://dl.acm.org/doi/10.1145/3269206.3271788>`_"
@@ -61,6 +67,9 @@ class REGAL(BaseModel):
         self.gammaattr = gammaattr
         self.buckets = buckets
     
+    # 输入来源：两图的度数/邻居统计与可选节点属性；嵌入生成不使用训练锚点。
+    # 功能：调用 get_xnetmf_embedding() 构造两侧嵌入，并用测试节点对计算日志指标。
+    # 输出结果：返回 emb1、emb2、logger，而非直接返回 S。
     def train(self,
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],
@@ -111,6 +120,8 @@ class REGAL(BaseModel):
 
         return emb1, emb2, logger
 
+    # 核心思路：组合结构与属性信息，采样代表节点构造相似度，用矩阵分解得到统一嵌入。
+    # 输出结果：返回两侧嵌入和重构误差，供 train() 评估与记录。
     def get_xnetmf_embedding(self, graph1, graph2, anchor_links, use_attr, verbose=True):
         degree1 = degree(graph1.edge_index[0], num_nodes=graph1.num_nodes)
         degree2 = degree(graph2.edge_index[0], num_nodes=graph2.num_nodes)
@@ -174,6 +185,7 @@ class REGAL(BaseModel):
 
         return xnetmf_emb[:n1], xnetmf_emb[n1:], svd_recon_loss.item()
 
+    # 功能：统计各跳邻居的度数分布并按层权重汇总，供 get_xnetmf_embedding() 使用。
     def get_structural_embedding(self, graph, max_degree):
         degrees = degree(graph.edge_index[0], num_nodes=graph.num_nodes)
         assert degrees.max().item() <= max_degree, 'Max degree is less than the maximum degree in the graph'
@@ -194,6 +206,7 @@ class REGAL(BaseModel):
 
         return structural_embedding
 
+    # 功能：按邻接关系逐层扩展各节点邻居，返回按跳数组织的邻居字典。
     @staticmethod
     def get_k_hop_neighbors(graph, k):
         adj = to_dense_adj(graph.edge_index, max_num_nodes=graph.num_nodes).squeeze().to(torch.bool)

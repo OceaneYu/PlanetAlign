@@ -1,0 +1,7 @@
+interface:
+  display_name: "Baseline Reference"
+  short_description: "Reproduce and benchmark an external 1-to-1 baseline without integrating it."
+  default_prompt: "Qualify this external graph-alignment baseline in .reference using its GitHub repository and paper."
+
+policy:
+  allow_implicit_invocation: true

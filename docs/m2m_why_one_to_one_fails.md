@@ -102,9 +102,10 @@ $$
 - **数据集**：Douban M2M（`data/m2m_overlap_0.05`，含模糊边界）、Cora M2M（`data/m2m_no_overlap`）。二者均带节点属性。
 - **代表算法**（每族选 2）：一致性 = IsoRank / FINAL；嵌入 = REGAL / BRIGHT；OT = PARROT / JOENA。
 - **流程**：复用 `scripts/run_m2m_experiments.py` 的加载与取 $\mathbf{S}$ 路径，训练后取每个模型暴露的 $\mathbf{S}$，运行五项诊断探针（P1–P5）。
-- **指标**：1-1 端用 `Hits@1/MRR`；M2M 端用 `ACS / MSF1 / MicroF1 / M2M-SGS / M2M-EGS`。M2M 指标分两种读出——
-  **泄漏式适配器**（`similarity_to_pred_entities`，把真值的源分组与目标规模回灌给方法）与 **盲评协议**（`m2m_blind.evaluate_blind`，
-  方法自行发现群组、自行匹配，不看真值）。
+- **指标**：1-1 端用 `Hits@1/MRR`；盲 M2M 端用 `Macro Set-F1 / Micro Set-F1 / AUIS / AUCS`。另保留一个明确隔离的
+  **oracle 诊断**（`m2m_diagnostics.oracle_grouped_topk`，把真值源分组与目标规模交给方法），只报告带
+  `OracleSrc+GT-K-` 前缀的目标侧 MicroF1 / MSF1 / Recall@GT-K；**盲评协议**（`m2m_blind.evaluate_blind`）
+  则由方法自行发现群组、自行匹配，不看真值。
 
 **表 2：数据集统计与"一对一读出召回上限"**
 
@@ -121,9 +122,9 @@ $$
 
 ## 4. 为什么一对一方法不适用：三类失败 × 三族
 
-**表 3：主结果（Douban / Cora）。** `leak`/`blind` 为泄漏式 / 盲评 MicroF1；`maxSrc/Tgt` 为被同一目标节点 argmax 指向的最多源节点数；`colCoV` 为耦合列边际的变异系数（越小越接近"每个目标吸收等量质量"）。ot方法有质量守恒约束，所以会比较小。
+**表 3：主结果（Douban / Cora）。** `oracle diag` 是已知 GT 源组和目标规模的条件目标排序诊断，`blind` 为盲评 MicroF1；`maxSrc/Tgt` 为被同一目标节点 argmax 指向的最多源节点数；`colCoV` 为耦合列边际的变异系数（越小越接近"每个目标吸收等量质量"）。OT 方法有质量守恒约束，所以会比较小。
 
-| 算法    | 族     | Hits@1        | MicroF1 (leak) | MicroF1 (blind)         | maxSrc/Tgt            | colCoV                |
+| 算法    | 族     | Hits@1        | Target MicroF1 (oracle diag) | MicroF1 (blind)         | maxSrc/Tgt            | colCoV                |
 | ------- | ------ | ------------- | -------------- | ----------------------- | --------------------- | --------------------- |
 | IsoRank | 一致性 | 0.031 / 0.027 | 0.037 / 0.041  | 0.043 / 0.041           | **3110 / 2893** | 0.96 / 1.10           |
 | FINAL   | 一致性 | 0.260 / 0.627 | 0.250 / 0.488  | 0.088 / 0.513           | 598 / 80              | 2.06 / 1.42           |
@@ -186,12 +187,13 @@ $$
 
 ### 4.3 (C) 监督与评测错配：错了什么
 
-**论断：训练监督是 1-1 锚点、模型从不知道"分组"任务；标准评测只认一个金标；常用 M2M 适配器靠回灌真值才显得"work"。**
+**论断：训练监督是 1-1 锚点、模型从不知道"分组"任务；标准评测只认一个金标；GT-assisted 目标排序诊断会因回灌真值而显得"work"。**
 
-> **〔实验·评测泄漏〕** 同一个 $\mathbf{S}$，泄漏式适配器 vs 盲评的 MicroF1 差距巨大：Douban 上 PARROT 由 0.429 跌到
-> **0.091**（虚高 4.7×）、FINAL 由 0.250 跌到 0.088（虚高 2.8×）。泄漏式适配器对每个真值实体取 $k=|tgt_e|$ 个目标、
-> 并以真值的源分组为查询，等于把"答案的分组与规模"喂回方法。`tests/test_m2m_failure_modes.py::EvaluationLeakTest` 证明：
-> 即便 $\mathbf{S}$ 全为常数（零信息），该适配器仍精确吐出 $|tgt_e|$ 个目标——它泄漏的是答案的基数。
+> **〔实验·oracle 诊断〕** 同一个 $\mathbf{S}$，oracle diagnostic vs 盲评的 MicroF1 差距巨大：Douban 上 PARROT 由 0.429 跌到
+> **0.091**（相差 4.7×）、FINAL 由 0.250 跌到 0.088（相差 2.8×）。`oracle_grouped_topk` 对每个真值实体取
+> $k=|tgt_e|$ 个目标，并以真值的源分组为查询，等于把"答案的分组与规模"作为诊断条件。
+> `tests/test_m2m_failure_modes.py::OracleProtocolTest` 证明：即便 $\mathbf{S}$ 全为常数（零信息），该诊断仍精确吐出
+> $|tgt_e|$ 个目标——它证明的是 protocol 使用 GT，而不是正式 M2M 能力。
 >
 > **〔实验·读出天花板〕** 原生 `Hits@K`/`argmax` 读出对每个查询只认一个金标；表 2 显示即便理想 oracle，目标集微平均召回也被
 > 钉死在 0.82–0.84 以下；实际 Hits@1 低至 0.03（IsoRank）。
@@ -222,7 +224,7 @@ $$
 1. **分类**：18 个算法按原论文归为一致性（2）、嵌入（12）、OT（4）三族；三族对外都只输出**跨图节点级**对象，无一输出实体/群组。
 2. **三类失败**：(A) 表示缺口——$\mathbf{S}\in\mathbb{R}^{n_1\times n_2}$ 无法表达图内共指（49%/30% 的实体需要它）；
    (B) 归纳偏置错配——一致性坍缩到枢纽（maxSrc/Tgt 达 3110）、OT 被边际锁成置换（colCoV=0.00，禁止 N-1）、嵌入用差异性推开共指；
-   (C) 监督/评测错配——1-1 锚点 + `Hits@K`（召回上限 0.82–0.84、实测 Hits@1 低至 0.03），泄漏式适配器把分数虚高至 4.7×。
+   (C) 监督/评测错配——1-1 锚点 + `Hits@K`（召回上限 0.82–0.84、实测 Hits@1 低至 0.03），oracle 条件诊断与盲评可相差 4.7×。
 3. **边界**：群组可由属性独立恢复且两图近似同构时（Cora），1-1 方法 + 外部分组已足够；M2M 结构非平凡时（Douban）差距在诚实评测下暴露。
 
 ---

@@ -1,4 +1,13 @@
-"""Base-aligner layer for the M2M quotient system.
+# 文件作用：把算法结果统一成节点配对分数表 S，并用训练时已知的节点对选择分数表的版本。
+# 数据来源：scripts/run_quotient_compare.py → main() 给 train_base_S() 传 Dataset，给 arbitrate_sharpen() 传矩阵、图与 anchors。
+# 核心依赖：PARROT 分支调用 PlanetAlign/algorithms/parrot.py → PARROT.train()；候选比较调用 PlanetAlign/m2m/quotient.py → quotient_decode()。
+# 结果去向：分数表返回入口，再由入口交给 PlanetAlign/m2m/quotient.py → evaluate_quotient_blind()。
+# 阅读建议：先看 train_base_S() 怎样创建算法并提取 S，再看 arbitrate_sharpen() 怎样选择版本。
+
+"""
+把不同基础对齐算法统一成相似度矩阵 S，再用训练锚点选择合适的矩阵处理方式或基础算法。
+
+Base-aligner layer for the M2M quotient system.
 
 QuotientDecode is aligner-agnostic: it consumes a similarity matrix ``S`` and
 never touches the aligner internals. Which aligner produces ``S`` is therefore
@@ -31,7 +40,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import torch
 
 import PlanetAlign
-from PlanetAlign.m2m_quotient import (
+from PlanetAlign.m2m.quotient import (
     entity_anchor_agreement,
     evaluate_quotient_blind,
     quotient_decode,
@@ -47,7 +56,9 @@ GIDS_DEFAULT = (0, 1)
 SHARPEN_TEMPS: Tuple[Optional[float], ...] = (None, 0.5, 0.1, 0.05, 0.01, 0.005)
 
 
-def base_configs() -> Dict[str, Dict[str, Any]]:
+# 功能：为每个基础算法提供创建方式、训练参数和结果提取方式，供 train_base_S() 使用。
+# 输出结果：配置中的 mode 区分直接矩阵、self.S 和嵌入向量，避免混淆算法返回值。
+def base_configs(seed: int = 0) -> Dict[str, Dict[str, Any]]:
     """Base-aligner recipes. ``mode`` says how to read ``S`` off the trained model.
 
     ``kind`` records the S family so callers can default the sharpening policy:
@@ -73,9 +84,14 @@ def base_configs() -> Dict[str, Dict[str, Any]]:
         "JOENA":     dict(factory=lambda: A.JOENA(alpha=0.7),
                           kwargs=dict(use_attr=True, total_epochs=100),
                           mode="self.S", kind="coupling"),
+        "GADL":      dict(factory=lambda: A.GADL(seed=seed),
+                          kwargs=dict(use_attr=True, total_epochs=100),
+                          mode="self.S", kind="embedding"),
     }
 
 
+# 输入来源：train_base_S() 传入训练后的算法对象、train() 返回值和配置中的 mode。
+# 输出结果：统一返回 CPU float32 矩阵；嵌入模式调用 PlanetAlign/utils/distance.py → pairwise_cosine_similarity() 转成节点分数。
 def _extract_s(algo, ret, mode: str, gids=GIDS_DEFAULT) -> torch.Tensor:
     if not isinstance(ret, tuple):
         ret = (ret,)
@@ -93,6 +109,10 @@ def _extract_s(algo, ret, mode: str, gids=GIDS_DEFAULT) -> torch.Tensor:
     raise ValueError(f"unknown extract mode {mode!r}")
 
 
+# 流程位置：入口 scripts/run_quotient_compare.py → main() 没有找到矩阵缓存时调用，负责启动基础算法。
+# 输入来源：入口传入 Dataset；gids 选出要比较的两张图。
+# 功能：按 base_configs() 创建算法并调用 train()，再用 _extract_s() 取出分数表。
+# 输出结果：S 交回入口成为 S_raw；分组与评分由入口安排，不在这里执行。
 def train_base_S(name: str,
                  dataset,
                  gids=GIDS_DEFAULT,
@@ -104,7 +124,7 @@ def train_base_S(name: str,
     has no node features (weak-attribute datasets: arenas, phone-email, italy,
     foursquare).
     """
-    cfgs = base_configs()
+    cfgs = base_configs(seed=seed)
     if name not in cfgs:
         raise KeyError(f"unknown base {name!r}; known: {sorted(cfgs)}")
     cfg = cfgs[name]
@@ -121,6 +141,8 @@ def train_base_S(name: str,
     return _extract_s(algo, ret, cfg["mode"], gids)
 
 
+# 功能：按行执行 softmax，使每个节点的高分匹配更突出；temp 为 None 时保留原矩阵。
+# 输出结果：候选矩阵交给 arbitrate_sharpen() 比较。
 def sharpen(S: torch.Tensor, temp: Optional[float]) -> torch.Tensor:
     """Row-softmax sharpening ``softmax(S / T)``; ``temp=None`` returns ``S``."""
     if temp is None:
@@ -128,6 +150,9 @@ def sharpen(S: torch.Tensor, temp: Optional[float]) -> torch.Tensor:
     return torch.softmax(S / float(temp), dim=1)
 
 
+# 输入来源：入口或 arbitrate_base() 传入 S、两侧图和训练锚点 anchors，不接收真实分组答案。
+# 核心思路：试用原表和突出高分的版本，调用 PlanetAlign/m2m/quotient.py → quotient_decode() 分组，再用 entity_anchor_agreement() 检查已知节点对。
+# 输出结果：选中的 S、处理温度和比较表返回调用方；实验入口接着调用 evaluate_quotient_blind()。
 def arbitrate_sharpen(S: torch.Tensor,
                       g_src,
                       g_tgt,
@@ -163,6 +188,9 @@ def arbitrate_sharpen(S: torch.Tensor,
     return best[2], best[1], table
 
 
+# 功能：逐一训练并处理候选基础算法，用训练锚点决定采用哪一个。
+# 核心思路：调用 train_base_S()、arbitrate_sharpen()，再用 PlanetAlign/m2m/quotient.py → entity_anchor_agreement() 排序。
+# 输出结果：返回算法名称、矩阵和比较表；gt_entities 只传给 evaluate_quotient_blind() 报告分数，不参与排序。
 def arbitrate_base(dataset,
                    bases: List[str],
                    gt_entities,

@@ -75,59 +75,58 @@ node-overlap with GT groups. This makes the metric adapter invariant to a pure
 cluster-id permutation. Pass `match_entities=False` if you need strict eid
 matching.
 
-Evaluate a node-level similarity matrix:
+Evaluate a node-level similarity matrix with the blind quotient decoder:
 
 ```python
-from PlanetAlign.m2m import evaluate_similarity
+from PlanetAlign.m2m.quotient import evaluate_quotient_blind
+from PlanetAlign.utils import get_anchor_pairs
 
-scores, pred_entities = evaluate_similarity(
-    similarity=S,
-    gt_entities=gt_entities,
+anchors = get_anchor_pairs(dataset.train_data, 0, 1)
+scores, pred_entities, decode_info = evaluate_quotient_blind(
+    S,
+    gt_entities,
+    dataset.pyg_graphs[0],
+    dataset.pyg_graphs[1],
+    anchors=anchors,
     return_predictions=True,
 )
 ```
 
+`gt_entities` is used only after `quotient_decode()` has produced its groups,
+to relabel and score the prediction. It does not enter group discovery or
+matching.
+
 Default metrics:
 
 ```text
-ACS
-MSF1
-MicroF1
-M2M-SGS
-M2M-EGS
+Macro Set-F1
+Micro Set-F1
+AUIS
+AUCS
 ```
 
-## Baseline Interface
+## Similarity-producing Baselines
 
-For a new baseline, inherit `ManyToManyBaseline`, implement `train()`, and set
-`self.S` to a dense similarity matrix with shape:
+An existing or new alignment model can participate by producing `self.S`, a
+dense similarity matrix with shape:
 
 ```text
 [num_source_nodes, num_target_nodes]
 ```
 
-Example:
+Train the model through its normal `BaseModel` interface, then pass the matrix
+to the same blind decoder:
 
 ```python
-import torch
-from PlanetAlign.m2m import ManyToManyBaseline
-
-
-class MyM2MBaseline(ManyToManyBaseline):
-    def train(self, dataset, gids, use_attr=True, **kwargs):
-        graph1 = dataset.pyg_graphs[gids[0]]
-        graph2 = dataset.pyg_graphs[gids[1]]
-
-        self.S = torch.zeros(graph1.num_nodes, graph2.num_nodes)
-        return self.S, None
+model.train(dataset=dataset, gids=[0, 1])
+scores = evaluate_quotient_blind(
+    model.S,
+    gt_entities,
+    dataset.pyg_graphs[0],
+    dataset.pyg_graphs[1],
+    anchors=anchors,
+)
 ```
 
-Then evaluate:
-
-```python
-model = MyM2MBaseline().to("cpu")
-model.train(dataset, gids=[0, 1])
-scores = model.test_many_to_many(gt_entities)
-```
-
-If your method directly predicts groups, override `predict_many_to_many()`.
+If a method directly predicts groups, evaluate that explicit entity map with
+`evaluate_predictions()`.

@@ -1,3 +1,8 @@
+# 文件作用：对图的边、节点、属性或训练锚点加入可控噪声，用于稳健性实验。
+# 数据来源：调用者传入 PlanetAlign/data/dataset.py → Dataset 或单张 PyG 图。
+# 核心处理：add_*_noises() 选择图及是否复制，再调用 perturb_*() 或 flip_attributes() 修改对应数据。
+# 阅读建议：先看 add_edge_noises() 等公开包装函数，再看其调用的单图处理函数。
+
 from typing import Union, Optional, List, Tuple
 
 import numpy as np
@@ -8,6 +13,7 @@ from torch_geometric.data import Data
 from PlanetAlign.data import Dataset
 # 为了支持实验而添加的工具，删掉节点后的对齐效果，添加一部分节点的对齐效果，删掉边的对齐效果，添加一部分边的对齐效果，翻转属性的对齐效果，添加高斯噪声的对齐效果，以及在监督信息上添加噪声的对齐效果
 
+# 功能：按比例随机增删无向边，返回新的 edge_index，供 add_edge_noises() 写回图。
 def perturb_edges(graph: Data,
                   noise_ratio: float,
                   seed: Optional[int] = None) -> torch.Tensor:
@@ -66,6 +72,7 @@ def perturb_edges(graph: Data,
     return new_edge_index
 
 
+# 功能：选定数据集中的图，调用 perturb_edges() 替换边；按参数选择原地修改或深拷贝。
 def add_edge_noises(dataset: Dataset,
                     noise_ratio: float,
                     gids: Optional[Union[int, List[int], Tuple[int, ...]]] = None,
@@ -116,6 +123,8 @@ def add_edge_noises(dataset: Dataset,
     return dataset
 
 
+# 功能：添加随机节点或删除选定节点，同步调整边、节点属性等图字段。
+# 输出结果：返回图对象，供 add_node_noises() 替换选定图。
 def perturb_nodes(
     graph: Data,
     noise_ratio: float,
@@ -244,6 +253,8 @@ def perturb_nodes(
     return graph
 
 
+# 功能：逐图调用 perturb_nodes() 并替换图对象，按参数选择修改原数据集或副本。
+# 输出结果：返回更新图后的数据集；本函数不重编号或筛选 train_data/test_data 的锚点。
 def add_node_noises(
     dataset: Dataset,
     noise_ratio: float,
@@ -310,6 +321,7 @@ def add_node_noises(
     return dataset
 
 
+# 功能：随机改变节点属性取值，返回属性张量；二值属性使用翻转。
 def flip_attributes(graph: Data,
                    noise_ratio: float,
                    seed: Optional[int] = None) -> torch.Tensor:
@@ -368,6 +380,7 @@ def flip_attributes(graph: Data,
     return flipped_x
 
 
+# 功能：按属性尺度加入高斯随机扰动，返回属性张量，供 add_attr_noises() 写回。
 def perturb_attributes_gaussian(graph: Data,
                                 std: float,
                                 seed: Optional[int] = None) -> torch.Tensor:
@@ -407,6 +420,7 @@ def perturb_attributes_gaussian(graph: Data,
     return x_noisy
 
 
+# 功能：按 mode 选择属性翻转或高斯扰动，返回处理后的数据集。
 def add_attr_noises(dataset: Dataset,
                     mode: str,
                     noise_ratio: float,
@@ -465,6 +479,7 @@ def add_attr_noises(dataset: Dataset,
     return dataset
 
 
+# 功能：替换部分训练锚点的目标编号以制造错误对应，返回新的训练锚点表。
 def perturb_supervision(dataset: Dataset,
                         noise_ratio: float,
                         src_gid: int = 0,
@@ -519,6 +534,7 @@ def perturb_supervision(dataset: Dataset,
     return noisy_train_data
 
 
+# 功能：调用 perturb_supervision() 并更新 train_data，测试锚点不参与这次扰动。
 def add_sup_noises(dataset: Dataset,
                    noise_ratio: float,
                    src_gid: int = 0,

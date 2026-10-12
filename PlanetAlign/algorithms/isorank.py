@@ -1,3 +1,7 @@
+# 文件作用：实现 IsoRank，从训练锚点出发在两图邻接结构之间传播节点匹配分数。
+# 数据来源：PlanetAlign/m2m/base.py → train_base_S() 或批量实验入口将 Dataset 传给 IsoRank.train()。
+# 结果去向：train() 直接返回 S 与日志；PlanetAlign/m2m/base.py → _extract_s(mode="S") 提取返回值，不依赖 self.S。
+
 from typing import List, Union, Tuple
 import torch
 import torch.nn.functional as F
@@ -13,6 +17,7 @@ from PlanetAlign.metrics import hits_ks_scores, mrr_score
 from .base_model import BaseModel
 
 
+# 功能：提供只使用图结构与训练锚点的两图对齐算法。
 class IsoRank(BaseModel):
     """Consistency-based method IsoRank for pairwise plain network alignment.
     IsoRank is proposed by the paper "`Global alignment of multiple protein interaction networks with application to functional orthology detection <https://www.pnas.org/doi/full/10.1073/pnas.0806627105>`_"
@@ -32,6 +37,9 @@ class IsoRank(BaseModel):
         assert 0 <= alpha <= 1, 'Alpha must be in [0, 1]'
         self.alpha = alpha
 
+    # 输入来源：dataset.pyg_graphs 提供两图边，train_data 提供锚点矩阵 H，test_data 只用于日志指标。
+    # 核心思路：构造锚点矩阵 H，反复用两侧邻接矩阵传播 S，并混入 H 保留监督信息。
+    # 输出结果：返回节点分数与日志；此实现未将最终矩阵赋给 self.S。
     def train(self,
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],

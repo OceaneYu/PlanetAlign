@@ -1,3 +1,8 @@
+# 文件作用：实现 WLAlign，传播锚点标签并用候选对应和负采样训练节点嵌入。
+# 数据来源：调用者或 scripts/run_m2m_experiments.py → evaluate_algorithm() 将 Dataset 传给 WLAlign.train()。
+# 核心依赖：PlanetAlign/utils/anchors.py → merge_pyg_graphs_on_anchors()；PlanetAlign/algorithms/wlalign/model.py 与 PlanetAlign/algorithms/wlalign/utils.py。
+# 结果去向：返回映射回原图的两侧嵌入和日志，实验入口再生成 S。
+
 import time
 from typing import List, Tuple, Union
 import numpy as np
@@ -19,6 +24,7 @@ from .utils import (get_anchor_based_embeddings, get_degree_exp_distribution, ge
 from .data import ContextDataset
 
 
+# 功能：在锚点合并图上逐步传播标签，扩展候选节点对应。
 class WLAlign(BaseModel):
     """Embedding-based method WLAlign for pairwise plain network alignment.
     WLAlign is proposed by the paper "`WL-Align: Weisfeiler-Lehman Relabeling for Aligning Users Across Networks via Regularized Representation Learning. <https://doi.org/10.1109/TKDE.2023.3277843>`_"
@@ -58,6 +64,9 @@ class WLAlign(BaseModel):
 
         self.verbose = True
 
+    # 输入来源：图边与 train_data 用于合并身份和标签传播，候选对应由本类流程逐步发现。
+    # 核心思路：合并锚点节点，聚合锚点标签找跨图候选，调用 train_anchor() 优化节点/上下文表示。
+    # 输出结果：按编号映射返回 output_emb1、output_emb2 和日志。
     def train(self,
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],
@@ -177,6 +186,7 @@ class WLAlign(BaseModel):
 
         return output_emb1, output_emb2, logger
 
+    # 功能：围绕当前候选对应构造训练样本和噪声节点，按负采样与候选相近目标更新模型。
     def train_anchor(self, merged_graph, gnd_subgraph, candidate_pairs, struct_epochs, curr_epoch):
         num_candidates = candidate_pairs.shape[0]
         candidate_nodes1 = torch.from_numpy(candidate_pairs[:, 0]).to(self.device)
@@ -237,6 +247,7 @@ class WLAlign(BaseModel):
 
         return self.model.self_embed.weight.data, overall_loss
 
+    # 功能：采样图边，并用锚点的前驱/后继替换部分端点，形成训练上下文。
     def _get_training_samples(self, gnd_subgraph, num_batches=1):
         edge_index = gnd_subgraph.edge_index
         num_edges = gnd_subgraph.num_edges

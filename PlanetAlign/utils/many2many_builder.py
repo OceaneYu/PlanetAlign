@@ -1,3 +1,9 @@
+# 文件作用：把一对一图数据中的部分节点拆成节点组，构建可用于多对多实验的基准。
+# 数据来源：scripts/build_m2m_benchmarks.py → build_one() 传入原始 Dataset 与拆分、重叠参数。
+# 核心处理：build_many_to_many_benchmark() 排除训练节点冲突、扩展图、生成真实实体并检查数据隔离。
+# 结果去向：ManyToManyBenchmark.save() 写出 .pt 和实体 JSON，随后由 scripts/run_quotient_compare.py → main() 读取。
+# 阅读建议：先看 build_many_to_many_benchmark()，再看 _build_side() 与 ManyToManyBenchmark.save()。
+
 """Many-to-many graph alignment benchmark builder.
 
 Converts an existing one-to-one alignment dataset (e.g. Douban, ACM-DBLP) into
@@ -19,8 +25,9 @@ Output
   (``graphs``, ``number_of_nodes``, ``edges``, ``node_attributes``,
   ``edge_attributes``, ``anchor_links``). ``anchor_links`` contains only the
   retained 1-1 pairs, so legacy one-to-one trainers keep working.
-- ``gt_many2many.json`` in the format expected by the ACS / MSF1 / MicroF1 /
-  M2M-SGS / M2M-EGS metrics: ``{"entities": {eid: {"src": [...], "tgt": [...]}}}``.
+- ``gt_many2many.json`` in the format expected by the Macro Set-F1 /
+  Micro Set-F1 / AUIS / AUCS metrics:
+  ``{"entities": {eid: {"src": [...], "tgt": [...]}}``.
 """
 
 from __future__ import annotations
@@ -47,6 +54,7 @@ DEFAULT_SPLIT_RATIOS: Dict[str, float] = {
 }
 
 
+# 功能：保存扩展后的图、真实实体、保留训练锚点和构建参数，不在创建时自动写磁盘。
 @dataclass
 class ManyToManyBenchmark:
     """Result container produced by :func:`build_many_to_many_benchmark`."""
@@ -58,6 +66,8 @@ class ManyToManyBenchmark:
     name: str = "m2m"
     graph_names: Tuple[str, ...] = ("src", "tgt")
 
+    # 输入来源：scripts/build_m2m_benchmarks.py → build_one() 调用构建结果的 save()。
+    # 输出结果：写出 Dataset 可读的 .pt 与真实实体 JSON，返回两条路径。
     def save(self, root: Union[str, Path]) -> Tuple[Path, Path]:
         """Persist the benchmark in the repo's standard formats.
 
@@ -102,6 +112,7 @@ class ManyToManyBenchmark:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+# 功能：按给定比例为实体分配一对一、一对多、多对一、多对多类型，供主构建函数决定拆分数量。
 def _assign_entity_types(
     num_entities: int,
     split_ratios: Dict[str, float],
@@ -130,6 +141,7 @@ def _assign_entity_types(
     return np.array([types[i] for i in labels], dtype=object)
 
 
+# 功能：将 edge_index 转成按源节点编号排列的邻居列表，供 _build_side() 分配原节点的外部连接。
 def _edge_index_to_neighbor_lists(edge_index: torch.Tensor, num_nodes: int) -> List[List[int]]:
     neigh: List[List[int]] = [[] for _ in range(num_nodes)]
     src = edge_index[0].tolist()
@@ -139,6 +151,8 @@ def _edge_index_to_neighbor_lists(edge_index: torch.Tensor, num_nodes: int) -> L
     return neigh
 
 
+# 输入来源：build_many_to_many_benchmark() 传入已分配的实体类型、最大展开数与随机生成器。
+# 输出结果：返回两侧成员数 (k_src, k_tgt)；每个需拆分的侧随机取 2～max_expansion，未拆分侧为 1。
 def _split_count(
     kind: str,
     max_expansion: int,
@@ -159,6 +173,7 @@ def _split_count(
     raise ValueError(f"unknown split type: {kind}")
 
 
+# 功能：为一个原节点创建多个成员并重分配连接，供 _build_side() 扩展图。
 def _split_one_node(
     orig_node: int,
     k: int,
@@ -216,6 +231,8 @@ def _split_one_node(
     return members, external_edges, internal_edges
 
 
+# 输入来源：build_many_to_many_benchmark() 传入一侧原图和节点拆分数量。
+# 输出结果：返回扩展后的 PyG 图及原节点到新成员列表的映射，供组装实体。
 def _build_side(
     graph: Data,
     selected: Dict[int, int],  # orig_node -> k (split factor, may be 1)
@@ -308,6 +325,7 @@ def _build_side(
     return new_graph, group_map
 
 
+# 功能：按比例让部分节点额外加入另一个实体，直接更新实体字典并返回插入次数。
 def _apply_overlap(
     entities: EntityMap,
     overlap_ratio: float,
@@ -355,6 +373,10 @@ def _apply_overlap(
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
+# 流程位置：实验前的数据构建，由 scripts/build_m2m_benchmarks.py → build_one() 调用。
+# 核心思路：从选定锚点构造实体，调用 _build_side() 扩展两侧图，再 _apply_overlap() 添加可选重叠。
+# 功能：默认保留训练锚点并排除与其冲突的评估实体，最后再次检查两者节点不重叠。
+# 输出结果：返回 ManyToManyBenchmark，由调用者决定何时 save()。
 def build_many_to_many_benchmark(
     dataset: Dataset,
     gids: Tuple[int, int] = (0, 1),

@@ -1,9 +1,14 @@
+# 文件作用：为图压缩准备节点到代表节点的候选连接、编号映射和孤立节点补连。
+# 数据来源：PlanetAlign/algorithms/nettrans/model.py → TransPool.forward() 传入图边与代表节点。
+# 阅读建议：从 cadicate_selection() 看候选补足，再读 remap_sup() 与 connect_isolated_nodes()。
+
 import torch
 from torch_geometric.utils import remove_self_loops, segregate_self_loops
 from torch.sparse import mm
 from torch_geometric.utils import add_self_loops
 
 
+# 功能：优先保留代表节点自分配，再用两跳或均匀候选补足无法分配的节点。
 def cadicate_selection(edge_index, edge_weight, edge_index1, edge_weight1, nodes, supernodes):
     '''
     Select candidate supernodes for nodes to be merged into.
@@ -43,6 +48,7 @@ def cadicate_selection(edge_index, edge_weight, edge_index1, edge_weight1, nodes
     return edge_index, edge_weight
 
 
+# 功能：使被选为代表的节点严格分配给自身，返回调整后的分配边。
 def preserve_loops(edge_index, edge_weight, supernodes, num_nodes):
     '''
     For nodes that are selected as supernodes, only keep one nonzero element in node-to-supernode assignment
@@ -75,6 +81,7 @@ def preserve_loops(edge_index, edge_weight, supernodes, num_nodes):
     return edge_index, edge_weight
 
 
+# 功能：过滤指定源节点发出的边，供候选处理使用。
 def filter_source(edge_index, edge_weight, source_nodes, num_nodes):
     '''
     Filter out the edges with source nodes
@@ -99,6 +106,7 @@ def filter_source(edge_index, edge_weight, source_nodes, num_nodes):
     return edge_index, edge_weight
 
 
+# 功能：只保留目标属于代表节点集合的连接。
 def filter_target(edge_index, edge_weight, target_nodes, num_nodes):
     '''
     Extract a directed self-looped sub-bipartite graph from the original graph (i.e., edge_index)
@@ -128,6 +136,7 @@ def filter_target(edge_index, edge_weight, target_nodes, num_nodes):
     return edge_index, edge_weight
 
 
+# 输出结果：把代表节点编号压缩到连续范围，并返回原编号到新编号的映射。
 def remap_sup(edge_index, super_nodes, num_nodes, mode='target'):
     '''
     Remap supernode indices to [0, num_supernodes - 1].
@@ -157,6 +166,7 @@ def remap_sup(edge_index, super_nodes, num_nodes, mode='target'):
     return edge_index, index_map
 
 
+# 功能：找出没有分配边的源节点，以便后续补足候选。
 def isolated_source_nodes(edge_index, nodes):
     '''
     Detect isolated source nodes.
@@ -176,6 +186,7 @@ def isolated_source_nodes(edge_index, nodes):
     return isolated_idx
 
 
+# 功能：通过稀疏矩阵乘法得到两跳连接，用于扩大代表节点候选。
 def two_hop_graph(edge_index, edge_weight, graph_shape,
                   edge_index1, edge_weight1, graph_shape1):
     '''
@@ -203,6 +214,7 @@ def two_hop_graph(edge_index, edge_weight, graph_shape,
     return edge_index, edge_weight
 
 
+# 功能：让仍孤立的节点以均匀权重连接候选代表节点。
 def augment_uniformly(edge_index, edge_weight, nodes, num_supernodes):
     '''
     Connect isolated nodes to supernodes with uniform weights
@@ -230,6 +242,7 @@ def augment_uniformly(edge_index, edge_weight, nodes, num_supernodes):
     return edge_index, edge_weight
 
 
+# 功能：按特征相似度为孤立节点补充连接，使压缩后的图仍可传播信息。
 def connect_isolated_nodes(x, edge_index, edge_weight, isolated_nodes):
 
     out = segregate_self_loops(edge_index, edge_weight)

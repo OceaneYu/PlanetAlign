@@ -1,11 +1,15 @@
+# 文件作用：统一实体字典格式，提供数据读写、训练锚点恢复和预测评分的辅助接口。
+# 数据来源：基准接口读 .pt/JSON；PlanetAlign/m2m/quotient.py → evaluate_quotient_blind() 将真实与预测分组传给编号对应函数。
+# 结果去向：align_prediction_to_ground_truth() 返回编号对应后的预测，由调用方传给 PlanetAlign/metrics/many_to_many.py → many_to_many_scores()。
+# 阅读建议：主线开始看 use_full_anchor_supervision()，评分时看 align_prediction_to_ground_truth()；它们发生在不同阶段。
+
 """Reusable interfaces for many-to-many graph alignment research.
 
 This module collects the pieces needed by new many-to-many alignment methods:
 
 - load a generated ``*_m2m.pt`` dataset and its ``*_gt_many2many.json`` file;
 - normalize/load/save prediction files in the standard entity-map format;
-- evaluate either explicit group predictions or a pairwise similarity matrix;
-- provide a lightweight baseline mixin for new algorithms.
+- evaluate explicit group predictions.
 
 Prediction format
 -----------------
@@ -37,14 +41,16 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import torch
 
-from PlanetAlign.algorithms.base_model import BaseModel
 from PlanetAlign.data import Dataset
-from PlanetAlign.metrics import many_to_many_scores, similarity_to_pred_entities
+from PlanetAlign.metrics import many_to_many_scores
 
 
 EntityMap = Dict[str, Dict[str, List[int]]]
 
 
+# 输入来源：scripts/run_quotient_compare.py → main() 传入刚加载的多对多 Dataset。
+# 功能：把 .pt 中已保留的原始训练锚点全部恢复到 train_data，并清空 test_data，避免重复划分。
+# 流程位置：应在生成的多对多基准加载后、基础算法训练前调用。
 def use_full_anchor_supervision(dataset) -> None:
     """Give a generated M2M dataset its intended training supervision.
 
@@ -70,6 +76,7 @@ def use_full_anchor_supervision(dataset) -> None:
 DEFAULT_ENTITY_SIDES = ("src", "tgt")
 
 
+# 功能：把 Dataset、真实实体、文件路径和构建信息放在同一个返回对象里。
 @dataclass
 class LoadedM2MBenchmark:
     """A generated many-to-many benchmark loaded from disk."""
@@ -83,12 +90,15 @@ class LoadedM2MBenchmark:
     gt_path: Path
 
 
+# 输出结果：按基准命名约定拼出 <name>_gt_many2many.json 的路径，不读取文件。
 def ground_truth_path(root: Union[str, Path], name: str) -> Path:
     """Return the standard ground-truth JSON path for an M2M dataset."""
 
     return Path(root) / f"{name}_gt_many2many.json"
 
 
+# 功能：把实体编号转为字符串、节点编号转为整数，去重并按可选节点总数检查范围。
+# 输出结果：返回规范化字典，供 load_entity_map()、save_entity_map() 和评估函数使用。
 def normalize_entity_map(
     entities: Mapping[str, Mapping[str, Iterable[int]]],
     sides: Sequence[str] = DEFAULT_ENTITY_SIDES,
@@ -141,6 +151,7 @@ def normalize_entity_map(
     return normalized
 
 
+# 输入来源：读取原始实体字典或带 entities 字段的 JSON，再交给 normalize_entity_map()。
 def load_entity_map(
     path: Union[str, Path],
     sides: Sequence[str] = DEFAULT_ENTITY_SIDES,
@@ -156,6 +167,8 @@ def load_entity_map(
     return normalize_entity_map(entities, sides=sides, num_nodes=num_nodes)
 
 
+# 功能：校验预测字典并写入 JSON，可附加数据集名称、图名称和元信息。
+# 输出结果：返回写入路径；与 load_entity_map() 组成预测文件的读写接口。
 def save_entity_map(
     entities: Mapping[str, Mapping[str, Iterable[int]]],
     path: Union[str, Path],
@@ -181,6 +194,8 @@ def save_entity_map(
     return path
 
 
+# 功能：调用 PlanetAlign/data/dataset.py → Dataset 加载图，同时读取真实实体 JSON。
+# 输出结果：返回 LoadedM2MBenchmark；此函数不自动调用 use_full_anchor_supervision()。
 def load_m2m_benchmark(
     root: Union[str, Path],
     name: str,
@@ -216,6 +231,7 @@ def load_m2m_benchmark(
     )
 
 
+# 功能：按真实实体编号补齐缺失预测为两侧空列表，可选择保留额外预测。
 def complete_prediction_entities(
     gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
     pred_entities: Mapping[str, Mapping[str, Iterable[int]]],
@@ -243,6 +259,8 @@ def complete_prediction_entities(
     return completed
 
 
+# 功能：把一个实体转换成 (图侧, 节点编号) 的集合，避免两图相同编号被误当成同一个节点。
+# 结果去向：align_prediction_to_ground_truth() 用这些集合的重叠量匹配真实与预测实体编号。
 def _entity_nodes(item: Mapping[str, Iterable[int]], sides: Sequence[str]) -> set[tuple[str, int]]:
     nodes = set()
     for side in sides:
@@ -251,6 +269,10 @@ def _entity_nodes(item: Mapping[str, Iterable[int]], sides: Sequence[str]) -> se
     return nodes
 
 
+# 流程位置：预测已完成后，为评分对应真实组和预测组的编号，不重新给节点分组。
+# 输入来源：PlanetAlign/m2m/quotient.py → evaluate_quotient_blind() 等传入真实与预测实体字典。
+# 核心思路：按共有成员多少排序，每个真实组与预测组至多对应一次；漏预测补空，额外预测保留。
+# 输出结果：对应编号后的预测交回调用方，再由 PlanetAlign/metrics/many_to_many.py → many_to_many_scores() 评分。
 def align_prediction_to_ground_truth(
     gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
     pred_entities: Mapping[str, Mapping[str, Iterable[int]]],
@@ -258,12 +280,12 @@ def align_prediction_to_ground_truth(
 ) -> EntityMap:
     """Relabel predicted group ids by node-overlap with GT groups.
 
-    The many-to-many metrics ACS/MSF1/MicroF1 are keyed by entity id, while
+    The Set-F1 metrics are keyed by entity id, while
     many group discovery methods produce arbitrary cluster ids. This adapter
     performs a one-to-one greedy matching from predicted groups to GT groups so
     that a pure group-id permutation does not lower keyed metrics. Unmatched
     prediction groups are retained under ``__extra__`` ids so cluster-level
-    metrics such as SGS/EGS still see over-segmentation or extra clusters.
+    AUIS/AUCS still see over-segmentation or extra clusters.
     """
 
     gt = normalize_entity_map(gt_entities, sides=sides)
@@ -306,6 +328,8 @@ def align_prediction_to_ground_truth(
     return aligned
 
 
+# 功能：规范化实体字典，按选项对应编号或补齐预测，再调用 many_to_many_scores()。
+# 输出结果：返回指标分数字典，供直接提交实体预测的算法使用。
 def evaluate_predictions(
     gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
     pred_entities: Mapping[str, Mapping[str, Iterable[int]]],
@@ -323,148 +347,15 @@ def evaluate_predictions(
     return many_to_many_scores(gt, pred, metrics=metrics)
 
 
-def predictions_from_similarity(
-    similarity: torch.Tensor,
-    gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
-    source_key: str = "src",
-    target_key: str = "tgt",
-    aggregation: str = "mean",
-    top_k: Optional[int] = None,
-) -> EntityMap:
-    """Convert a pairwise similarity matrix into standard M2M predictions."""
-
-    gt = normalize_entity_map(gt_entities, sides=(source_key, target_key))
-    return similarity_to_pred_entities(
-        similarity=similarity,
-        gt_entities=gt,
-        source_key=source_key,
-        target_key=target_key,
-        aggregation=aggregation,
-        top_k=top_k,
-    )
-
-
-def evaluate_similarity(
-    similarity: torch.Tensor,
-    gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
-    metrics: Optional[Iterable[str]] = None,
-    source_key: str = "src",
-    target_key: str = "tgt",
-    aggregation: str = "mean",
-    top_k: Optional[int] = None,
-    return_predictions: bool = False,
-) -> Union[Dict[str, float], Tuple[Dict[str, float], EntityMap]]:
-    """Evaluate a node-level similarity matrix under M2M metrics."""
-
-    pred = predictions_from_similarity(
-        similarity=similarity,
-        gt_entities=gt_entities,
-        source_key=source_key,
-        target_key=target_key,
-        aggregation=aggregation,
-        top_k=top_k,
-    )
-    scores = evaluate_predictions(gt_entities, pred, metrics=metrics, sides=(source_key, target_key))
-    if return_predictions:
-        return scores, pred
-    return scores
-
-
-class ManyToManyBaseline(BaseModel):
-    """Base class for new pairwise many-to-many alignment baselines.
-
-    Subclasses should implement ``train()`` following ``BaseModel`` and set
-    ``self.S`` to a dense ``[num_src_nodes, num_tgt_nodes]`` similarity matrix.
-    They then inherit ``predict_many_to_many()`` and ``test_many_to_many()``.
-    Algorithms that directly produce group predictions may override
-    ``predict_many_to_many()``.
-    """
-
-    def predict_many_to_many(
-        self,
-        gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
-        source_key: str = "src",
-        target_key: str = "tgt",
-        aggregation: str = "mean",
-        top_k: Optional[int] = None,
-    ) -> EntityMap:
-        if self.S is None:
-            raise RuntimeError("Model is not trained yet, call train() before predicting")
-        return predictions_from_similarity(
-            similarity=self.S.detach().to(torch.float32).cpu(),
-            gt_entities=gt_entities,
-            source_key=source_key,
-            target_key=target_key,
-            aggregation=aggregation,
-            top_k=top_k,
-        )
-
-    def test_many_to_many(
-        self,
-        gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
-        metrics: Optional[Iterable[str]] = None,
-        source_key: str = "src",
-        target_key: str = "tgt",
-        aggregation: str = "mean",
-        top_k: Optional[int] = None,
-    ) -> Dict[str, float]:
-        pred = self.predict_many_to_many(
-            gt_entities=gt_entities,
-            source_key=source_key,
-            target_key=target_key,
-            aggregation=aggregation,
-            top_k=top_k,
-        )
-        return evaluate_predictions(gt_entities, pred, metrics=metrics, sides=(source_key, target_key))
-
-
-def evaluate_model(
-    model: BaseModel,
-    dataset: Dataset,
-    gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
-    gids: Tuple[int, int] = (0, 1),
-    train_kwargs: Optional[Mapping[str, Any]] = None,
-    metrics: Optional[Iterable[str]] = None,
-    one_to_one_metrics: Optional[Iterable[str]] = ("Hits@1", "Hits@10", "MRR"),
-    save_log: bool = False,
-    verbose: bool = False,
-) -> Dict[str, Any]:
-    """Train a baseline model and evaluate both 1-1 and M2M metrics.
-
-    This helper expects the model to either set ``self.S`` during ``train()``
-    or return a dense similarity matrix as the first return value.
-    """
-
-    kwargs = dict(train_kwargs or {})
-    ret = model.train(dataset=dataset, gids=list(gids), save_log=save_log, verbose=verbose, **kwargs)
-    if model.S is None:
-        if isinstance(ret, tuple) and ret and torch.is_tensor(ret[0]) and ret[0].dim() == 2:
-            model.S = ret[0]
-        elif torch.is_tensor(ret) and ret.dim() == 2:
-            model.S = ret
-        else:
-            raise RuntimeError("model did not set self.S or return a 2D similarity matrix")
-
-    scores: Dict[str, Any] = {}
-    if one_to_one_metrics is not None:
-        scores.update(model.test(dataset=dataset, gids=list(gids), metrics=list(one_to_one_metrics)))
-    scores.update(evaluate_similarity(model.S.detach().to(torch.float32).cpu(), gt_entities, metrics=metrics))
-    return scores
-
-
 __all__ = [
     "EntityMap",
     "LoadedM2MBenchmark",
-    "ManyToManyBaseline",
     "align_prediction_to_ground_truth",
     "complete_prediction_entities",
-    "evaluate_model",
     "evaluate_predictions",
-    "evaluate_similarity",
     "ground_truth_path",
     "load_entity_map",
     "load_m2m_benchmark",
     "normalize_entity_map",
-    "predictions_from_similarity",
     "save_entity_map",
 ]

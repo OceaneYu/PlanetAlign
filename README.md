@@ -16,7 +16,8 @@ network alignment**: aligning *entities* that each correspond to a *set* of node
 the one-to-one node correspondences the original library (and most of the NA literature) assume.
 
 The M2M work is the content of this branch. The upstream library and its APIs are unchanged and documented
-below; everything M2M lives in the `m2m_*` modules, the `scripts/` runners, and the `docs/m2m_*` design notes.
+below; M2M interfaces and decoders live in the `PlanetAlign/m2m/` package, with
+experiment runners in `scripts/` and design notes in `docs/m2m_*`.
 
 ---
 
@@ -49,7 +50,7 @@ their rows of `S` are near-collinear. No new module is needed — only a readout
    │ evidence-conditional outlier eviction                           │
    └────────────────────────────────────────────────────────────────┘
                     │
-             entity map  →  blind ACS / MSF1 / MicroF1 / M2M-SGS / M2M-EGS
+             entity map  →  Macro Set-F1 / Micro Set-F1 / AUIS / AUCS
 ```
 
 **One principle spans four layers** — grouping evidence, merge thresholds, sharpening temperature, and base
@@ -79,15 +80,35 @@ for the full retrospective.
 ## Repository map (M2M)
 
 ### Library modules (`PlanetAlign/`)
+
+The M2M modules are grouped in one package:
+
+```text
+PlanetAlign/m2m/
+├── __init__.py     # Public entity-map and benchmark interfaces
+├── core.py         # Data loading, prediction I/O, and evaluation interfaces
+├── base.py         # Base-aligner training and anchor-based selection
+├── blind.py        # Blind grouping and decoding baselines
+├── quotient.py     # QuotientDecode
+├── contrastive.py  # JOENA-PC training variant
+└── diagnostics.py  # Ground-truth-assisted research diagnostics
+```
+
+Common imports such as `from PlanetAlign.m2m import load_m2m_benchmark` remain
+available. Submodule imports now use `PlanetAlign.m2m.base`,
+`PlanetAlign.m2m.blind`, `PlanetAlign.m2m.quotient`,
+`PlanetAlign.m2m.contrastive`, and `PlanetAlign.m2m.diagnostics`.
+
 | File | Role |
 |---|---|
-| `m2m.py` | M2M interface: `EntityMap`, GT alignment, `use_full_anchor_supervision`, metric glue |
-| `m2m_blind.py` | Blind protocol: group discovery from `S` profiles, entity decode, blind evaluation |
-| `m2m_quotient.py` | **QuotientDecode** — the core M2M readout (all components above), plus `evaluate_quotient_blind` |
-| `m2m_base.py` | Base-aligner axis: `train_base_S`, `arbitrate_sharpen`, `arbitrate_base` (PARROT and others) |
-| `m2m_contrastive.py` | `JOENAPC` — training-side fix: symmetry-broken inputs + uniformity contrastive + group-level Sinkhorn marginals |
+| `m2m/core.py` | M2M interface: `EntityMap`, GT alignment, `use_full_anchor_supervision`, metric glue |
+| `m2m/blind.py` | Blind protocol: group discovery from `S` profiles, entity decode, blind evaluation |
+| `m2m/quotient.py` | **QuotientDecode** — the core M2M readout (all components above), plus `evaluate_quotient_blind` |
+| `m2m/base.py` | Base-aligner axis: `train_base_S`, `arbitrate_sharpen`, `arbitrate_base` (PARROT and others) |
+| `m2m/contrastive.py` | `JOENAPC` — training-side fix: symmetry-broken inputs + uniformity contrastive + group-level Sinkhorn marginals |
+| `m2m/diagnostics.py` | GT-assisted diagnostic helpers, separate from blind prediction |
 | `utils/many2many_builder.py` | M2M benchmark builder (node-splitting) with a hard cross-set leakage invariant |
-| `metrics/` | ACS, MSF1, MicroF1, M2M-SGS, M2M-EGS |
+| `metrics/` | Macro Set-F1, Micro Set-F1, AUIS, AUCS |
 
 ### Scripts (`scripts/`)
 **Formal experiment pipeline**
@@ -151,8 +172,8 @@ Programmatic use:
 import json
 from PlanetAlign.data import Dataset
 from PlanetAlign.m2m import use_full_anchor_supervision
-from PlanetAlign.m2m_base import train_base_S, arbitrate_sharpen
-from PlanetAlign.m2m_quotient import evaluate_quotient_blind
+from PlanetAlign.m2m.base import train_base_S, arbitrate_sharpen
+from PlanetAlign.m2m.quotient import evaluate_quotient_blind
 from PlanetAlign.utils import get_anchor_pairs
 
 ds = Dataset(root="data/m2m_no_overlap", name="ppi_m2m", train_ratio=0.2, seed=42)
@@ -164,7 +185,7 @@ gt = json.load(open("data/m2m_no_overlap/ppi_m2m_gt_many2many.json"))["entities"
 S = train_base_S("PARROT", ds, seed=42)                # base similarity
 S, T, _ = arbitrate_sharpen(S, g_src, g_tgt, anchors)  # blind sharpening choice
 scores = evaluate_quotient_blind(S, gt, g_src, g_tgt,   # blind M2M readout
-                                 metrics=["MicroF1", "ACS", "MSF1"], anchors=anchors)
+                                 metrics=["Macro Set-F1", "Micro Set-F1", "AUIS", "AUCS"], anchors=anchors)
 print(scores)
 ```
 

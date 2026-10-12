@@ -1,3 +1,8 @@
+# 文件作用：用 Dataset 读取 .pt 中的图和已知节点对应关系，或用 BaseData 接收已有图对象。
+# 核心处理：检查数据是否匹配，并把节点对应表分成训练用的 train_data 和测试用的 test_data。
+# 结果去向：scripts/run_quotient_compare.py → main() 将加载好的 Dataset 传给 PlanetAlign/m2m/base.py → train_base_S()。
+# 阅读建议：先看 Dataset.__init__()/load_dataset()；多对多训练节点对的恢复在 PlanetAlign/m2m/core.py → use_full_anchor_supervision()。
+
 import copy
 import os
 from pathlib import Path
@@ -6,6 +11,7 @@ import torch
 from torch_geometric.data import Data
 
 
+# 功能：包装调用者已有的图和锚点，提供与 Dataset 相同的校验、划分和复制操作。
 class BaseData:
     r"""A dataset object storing multiple graphs and ground-truth anchor links for alignment.
 
@@ -24,6 +30,8 @@ class BaseData:
     seed: int, optional
         Random seed for shuffling the anchor links. Default is 0.
     """
+    # 输入来源：调用者直接传入 PyG 图列表和锚点张量，无需读取磁盘。
+    # 输出结果：初始化 pyg_graphs、train_data、test_data，供算法的 train() 使用。
     def __init__(self,
                  graphs: list[Data],
                  anchor_links: torch.Tensor,
@@ -41,6 +49,8 @@ class BaseData:
         self._validate()
         self.train_data, self.test_data = self.train_test_split()
 
+    # 功能：按 seed 打乱锚点行并按 train_ratio 划分，返回训练和测试张量。
+    # 核心思路：保存并恢复 PyTorch 随机状态，避免这次划分影响后续随机操作。
     def train_test_split(self):
         num_anchor = self._anchor_links.shape[0]
         rng_state = torch.get_rng_state()
@@ -53,6 +63,7 @@ class BaseData:
     def _check_integrity(self, root): # 检查数据集是否完整
         raise NotImplementedError
 
+    # 功能：检查图对象、锚点维度、节点编号及属性数量是否匹配。
     def _validate(self): # 验证数据集是否符合要求
         assert hasattr(self, 'pyg_graphs') and hasattr(self, '_anchor_links'), 'Dataset has not been loaded yet, wrong place for validation'
         assert type(self.pyg_graphs) in [list, tuple], 'Graphs must be stored in a list or tuple'
@@ -114,10 +125,12 @@ class BaseData:
         )
         return output
 
+    # 输出结果：返回独立的深拷贝，便于噪声实验修改副本。
     def clone(self):
         return copy.deepcopy(self)
 
 
+# 功能：统一加载 .pt 图数据；PlanetAlign/datasets/ 的具体数据集类可重写 load_dataset()。
 class Dataset:
     r"""A dataset object storing multiple graphs and ground-truth anchor links for alignment.
 
@@ -139,6 +152,8 @@ class Dataset:
         Random seed for shuffling the anchor links. Default is 0.
 
     """
+    # 流程位置：实验入口创建数据集时执行；依次加载图、校验数据、划分锚点。
+    # 输出结果：pyg_graphs 提供图结构与属性，train_data/test_data 提供已知对应关系。
     def __init__(self,
                  root: Union[str, Path],
                  name: str,
@@ -160,6 +175,8 @@ class Dataset:
         self._validate()
         self.train_data, self.test_data = self.train_test_split()
 
+    # 输入来源：读取 root/<name>.pt 中的 edges、number_of_nodes、可选属性和 anchor_links。
+    # 输出结果：返回 PyG Data 列表和锚点张量，由 __init__() 继续校验与划分。
     def load_dataset(self) -> tuple[list[Data], torch.Tensor]:
         data_dict = torch.load(Path.joinpath(self.root, f'{self.name}.pt'), weights_only=True)
         pyg_graphs = list()
@@ -173,6 +190,8 @@ class Dataset:
         anchor_links = data_dict['anchor_links']
         return pyg_graphs, anchor_links
 
+    # 功能：按 seed 和 train_ratio 将锚点拆成训练与测试部分。
+    # 流程位置：生成的多对多基准会再由 PlanetAlign/m2m/core.py → use_full_anchor_supervision() 恢复完整训练锚点。
     def train_test_split(self):
         num_anchor = self._anchor_links.shape[0]
         rng_state = torch.get_rng_state()
@@ -185,6 +204,7 @@ class Dataset:
     def _check_integrity(self, root):
         raise NotImplementedError
 
+    # 功能：检查加载后的图、锚点和属性形状；错误数据在进入算法前触发断言。
     def _validate(self):
         assert hasattr(self, 'pyg_graphs') and hasattr(self, '_anchor_links'), 'Dataset has not been loaded yet, wrong place for validation'
         assert type(self.pyg_graphs) in [list, tuple], 'Graphs must be stored in a list or tuple'
@@ -246,6 +266,7 @@ class Dataset:
         )
         return output
 
+    # 输出结果：深拷贝数据集，供 PlanetAlign/utils/noise.py 的噪声函数选择修改副本。
     def clone(self):
         return copy.deepcopy(self)
 

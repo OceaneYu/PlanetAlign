@@ -1,3 +1,7 @@
+# 文件作用：准备 WLAlign 的锚点标签、局部子图、候选对应及负例分布。
+# 数据来源：PlanetAlign/algorithms/wlalign/main.py → WLAlign.train()/train_anchor() 传入合并图和编号映射。
+# 阅读建议：先看 get_anchor_based_embeddings() 与 get_closest_cross_node_pairs()，再看局部子图辅助函数。
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -8,6 +12,7 @@ from typing import List, Tuple, Union
 from torch import Tensor
 
 
+# 功能：为锚点初始化独立 one-hot 标签，其他节点为零，供标签传播使用。
 def get_anchor_based_embeddings(graph):
     # Original function: get_graph_label(network, init_dim, device)
     # Create an embedding of shape (num_nodes, num_nodes)
@@ -22,6 +27,7 @@ def get_anchor_based_embeddings(graph):
     return init_embed
 
 
+# 功能：按节点出现次数的幂次生成归一化负采样分布。
 def get_degree_exp_distribution(node_samples, p=0.75):
     if isinstance(node_samples, torch.Tensor):
         node_samples = node_samples.cpu().numpy()
@@ -52,6 +58,7 @@ def get_pyg_predecessors(graph: Data, node: int):
     return graph.edge_index[0][graph.edge_index[1] == node]
 
 
+# 功能：提取指定节点及一跳邻居，返回子图边和编号映射。
 def single_hop_subgraph(node_idx: Union[int, List[int], Tensor],
                         edge_index: Tensor,
                         relabel_nodes: bool = False) -> Tuple[Tensor, Tensor, Tensor]:
@@ -64,6 +71,7 @@ def single_hop_subgraph(node_idx: Union[int, List[int], Tensor],
     return subset, edge_index, mapping
 
 
+# 功能：用标签嵌入比较两侧节点，选取彼此最近且满足条件的跨图候选。
 def get_closest_cross_node_pairs(embeddings, nodes1, nodes2, device='cpu'):
     assert np.all(nodes1 >= 0) and np.all(nodes2 >= 0), 'Node indices should be non-negative.'
     emb1 = embeddings[nodes1].to(device)
@@ -85,6 +93,7 @@ def get_closest_cross_node_pairs(embeddings, nodes1, nodes2, device='cpu'):
     return np.array(list(candidate)).astype(np.int64)
 
 
+# 功能：根据合并编号映射识别未共享锚点身份的节点。
 def get_non_anchor_from_merged_graph(graph: Data,
                                      id2node: Union[dict, defaultdict],
                                      gid: int):
@@ -98,6 +107,7 @@ def get_non_anchor_from_merged_graph(graph: Data,
     return np.array(node_list)
 
 
+# 功能：返回原图中不在当前子图映射里的节点，供构造噪声池。
 def get_nodes_outside_subgraph(subgraph, graph):
     r"""Get nodes in a graph that are outside the given subgraph."""
     assert subgraph.num_nodes <= graph.num_nodes, 'Subgraph should be smaller than the original graph.'

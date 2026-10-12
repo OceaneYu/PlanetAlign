@@ -1,27 +1,24 @@
+# 文件作用：验证节点编号规范化、缺失预测、组编号变化及公共 API 边界。
+# 核心依赖：PlanetAlign/m2m/core.py 的实体格式、JSON 与评估接口；样例在本文件构造，不需完整基准。
+# 阅读建议：先读测试类的准备数据和对应断言，可用 python -m unittest discover -s tests 运行。
+
 import tempfile
 import unittest
 from pathlib import Path
 
-import torch
-
+import PlanetAlign.m2m as m2m_module
 from PlanetAlign.m2m import (
-    ManyToManyBaseline,
     align_prediction_to_ground_truth,
     evaluate_predictions,
-    evaluate_similarity,
     load_entity_map,
     normalize_entity_map,
     save_entity_map,
 )
 
 
-class DummyManyToManyBaseline(ManyToManyBaseline):
-    def train(self, dataset, gids, *args, **kwargs):
-        self.S = torch.tensor([[0.1, 0.9, 0.8], [0.7, 0.2, 0.1]])
-        return self.S, None
-
-
+# 功能：用小型实体字典与临时 JSON 检查调用约定。
 class ManyToManyInterfaceTest(unittest.TestCase):
+    # 功能：准备两个真实实体，供各测试独立比较预测集合。
     def setUp(self):
         self.gt_entities = {
             "e0": {"src": [0], "tgt": [1, 2]},
@@ -50,9 +47,10 @@ class ManyToManyInterfaceTest(unittest.TestCase):
 
         scores = evaluate_predictions(self.gt_entities, pred)
 
-        self.assertLess(scores["MSF1"], 1.0)
-        self.assertLess(scores["MicroF1"], 1.0)
+        self.assertLess(scores["Macro Set-F1"], 1.0)
+        self.assertLess(scores["Micro Set-F1"], 1.0)
 
+    # 功能：仅改变预测组编号，确认适配器恢复对应且所有分数仍为 1。
     def test_group_id_permutation_is_matched_by_adapter(self):
         gt = {
             "e0": {"src": [0], "tgt": [0, 1]},
@@ -72,26 +70,15 @@ class ManyToManyInterfaceTest(unittest.TestCase):
         for value in scores.values():
             self.assertAlmostEqual(value, 1.0)
 
-    def test_evaluate_similarity_can_return_predictions(self):
-        similarity = torch.tensor([[0.1, 0.9, 0.8], [0.7, 0.2, 0.1]])
-
-        scores, pred = evaluate_similarity(
-            similarity,
-            self.gt_entities,
-            return_predictions=True,
-        )
-
-        self.assertAlmostEqual(scores["MSF1"], 1.0)
-        self.assertEqual(set(pred["e0"]["tgt"]), {1, 2})
-        self.assertEqual(pred["e1"]["tgt"], [0])
-
-    def test_baseline_mixin_predicts_from_similarity(self):
-        model = DummyManyToManyBaseline()
-        model.S = torch.tensor([[0.1, 0.9, 0.8], [0.7, 0.2, 0.1]])
-
-        scores = model.test_many_to_many(self.gt_entities)
-
-        self.assertAlmostEqual(scores["MicroF1"], 1.0)
+    # 功能：确认借助真实分组的旧相似度接口未从公共包导出。
+    def test_gt_assisted_similarity_interfaces_are_not_public(self):
+        for name in (
+            "predictions_from_similarity",
+            "evaluate_similarity",
+            "ManyToManyBaseline",
+            "evaluate_model",
+        ):
+            self.assertFalse(hasattr(m2m_module, name), name)
 
 
 if __name__ == "__main__":

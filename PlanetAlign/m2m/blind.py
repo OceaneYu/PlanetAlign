@@ -1,7 +1,12 @@
+# 文件作用：提供更简单的多对多分组与贪心匹配基线，供解码实验比较。
+# 数据来源：scripts/run_quotient_compare.py → main() 传入 S、两侧图；profile_greedy_scores() 直接调用轮廓分组。
+# 核心处理：discover_groups() 按属性或邻居重叠分组，decode_entity_map() 按组均值分数选择目标组。
+# 阅读建议：先看 blind_predict() → discover_groups() → decode_entity_map()；evaluate_blind() 才引入真实实体评分。
+
 """Blind (non-leaking) many-to-many evaluation.
 
-The default M2M adapter in :mod:`PlanetAlign.m2m`
-(``similarity_to_pred_entities``) hands the method two pieces of ground truth:
+The diagnostic helper :func:`PlanetAlign.m2m.diagnostics.oracle_grouped_topk`
+hands the method two pieces of ground truth:
 
 1. the **source-side grouping** (it iterates ``gt_entities`` and uses each GT
    entity's source nodes as the query set), and
@@ -43,6 +48,7 @@ from PlanetAlign.m2m import align_prediction_to_ground_truth, EntityMap
 # ---------------------------------------------------------------------------
 # Group discovery (observable signal only)
 # ---------------------------------------------------------------------------
+# 功能：从相邻节点中选出属性相近或邻居重叠足够高的节点对，交给 discover_groups()。
 def _cohesion_pairs(
     graph,
     use_attr: bool,
@@ -90,6 +96,7 @@ def _cohesion_pairs(
     return pairs
 
 
+# 功能：用并查集合并候选节点对；没有候选边的节点各自成组。
 def _components(num_nodes: int, pairs: Iterable[Tuple[int, int]]) -> List[List[int]]:
     """Union-find connected components; isolated nodes become singletons."""
     parent = list(range(num_nodes))
@@ -111,6 +118,7 @@ def _components(num_nodes: int, pairs: Iterable[Tuple[int, int]]) -> List[List[i
     return list(groups.values())
 
 
+# 功能：调用 _cohesion_pairs() 和 _components()，仅用单张图的可见信息给所有节点分组。
 def discover_groups(
     graph,
     use_attr: bool = True,
@@ -130,6 +138,8 @@ def discover_groups(
     return _components(int(graph.num_nodes), _cohesion_pairs(graph, use_attr, attr_tau, struct_tau))
 
 
+# 输入来源：scripts/run_quotient_compare.py → profile_greedy_scores() 传入 S 或 S.T。
+# 功能：按相邻节点匹配轮廓的余弦相似度与固定阈值分组，返回节点组列表。
 def discover_groups_by_profile(
     profiles: torch.Tensor,
     graph,
@@ -173,6 +183,7 @@ def _group_labels(groups: Sequence[Sequence[int]], num_nodes: int) -> torch.Tens
     return labels
 
 
+# 功能：先按源组平均矩阵行，再按目标组平均矩阵列，得到组与组的分数矩阵。
 def _pooled_group_scores(
     similarity: torch.Tensor,
     src_groups: Sequence[Sequence[int]],
@@ -206,6 +217,8 @@ def _pooled_group_scores(
     return T  # [g1, g2]
 
 
+# 输入来源：blind_predict() 或比较脚本传入 S 和两侧分组。
+# 输出结果：每个源组选择最高分目标组，返回实体字典；低于阈值时目标集合为空。
 def decode_entity_map(
     similarity: torch.Tensor,
     src_groups: Sequence[Sequence[int]],
@@ -238,6 +251,8 @@ def decode_entity_map(
     return pred
 
 
+# 功能：将 S 转到 CPU，分别 discover_groups()，再 decode_entity_map() 生成预测。
+# 输出结果：实体字典交给 evaluate_blind()；本函数不接收真实实体。
 def blind_predict(
     similarity: torch.Tensor,
     graph_src,
@@ -255,6 +270,8 @@ def blind_predict(
     return decode_entity_map(S, src_groups, tgt_groups, threshold, relative_threshold)
 
 
+# 功能：先 blind_predict()，再调用 PlanetAlign/m2m/core.py → align_prediction_to_ground_truth() 与指标入口评分。
+# 输出结果：分数字典，按选项还返回未经编号适配的预测。
 def evaluate_blind(
     similarity: torch.Tensor,
     gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
@@ -270,8 +287,8 @@ def evaluate_blind(
 ) -> Union[Dict[str, float], Tuple[Dict[str, float], EntityMap]]:
     """Blind M2M evaluation: the method self-produces groups, then is scored.
 
-    Unlike :func:`PlanetAlign.m2m.evaluate_similarity`, no source grouping or
-    target-size oracle is leaked into the prediction.
+    Unlike :func:`PlanetAlign.m2m.diagnostics.oracle_grouped_topk`, no source
+    grouping or target-size oracle is leaked into the prediction.
     """
     pred = blind_predict(
         similarity, graph_src, graph_tgt,

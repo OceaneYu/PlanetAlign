@@ -1,3 +1,8 @@
+# 文件作用：实现 JOENA，将节点嵌入学习与最优传输匹配联合训练。
+# 数据来源：scripts/run_quotient_compare.py → main() 内部 get_S() 将 Dataset 交给 JOENA.train()。
+# 核心依赖：PlanetAlign/utils/rwr.py → get_batch_rwr_scores()；PlanetAlign/algorithms/joena/model.py → MLP 和 FusedGWLoss。
+# 结果去向：train() 保存 self.S 并返回矩阵与日志，入口缓存矩阵后调用 PlanetAlign/m2m/quotient.py 的解码器。
+
 from typing import Union, Tuple, List
 import torch
 import time
@@ -12,6 +17,7 @@ from PlanetAlign.algorithms.base_model import BaseModel
 from .model import MLP, FusedGWLoss
 
 
+# 功能：维护编码器尺寸、损失权重与优化器参数，公共调用入口是 train()。
 class JOENA(BaseModel):
     """OT-based method JOENA for pairwise network alignment.
     JOENA is proposed by the paper "`Joint Optimal Transport and Embedding for Network Alignment <https://arxiv.org/pdf/2502.19334>`_"
@@ -51,6 +57,9 @@ class JOENA(BaseModel):
         self.out_dim = out_dim
         self.lr = lr
 
+    # 输入来源：Dataset 的两图及 train_data 生成 RWR/属性输入，test_data 供每轮节点指标记录。
+    # 核心思路：拼接训练锚点的 RWR 特征与可选属性，训练共享 MLP，并用 FusedGWLoss 计算匹配与结构损失。
+    # 输出结果：每轮产生 S 并记录节点指标，最终返回 S 与日志，供入口继续多对多解码。
     def train(self,
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],
@@ -117,9 +126,12 @@ class JOENA(BaseModel):
             model.train()
             optimizer.zero_grad()
             ref_t0 = time.time()
+            # 流程位置：model(...) 由 PyTorch 转入 PlanetAlign/algorithms/joena/model.py → MLP.forward()，把两侧输入特征编码成节点向量。
             out1, out2 = model(input_emb1, input_emb2)
+            # 数据来源：criterion(...) 转入 PlanetAlign/algorithms/joena/model.py → FusedGWLoss.forward()，返回训练损失和节点矩阵 S。
             loss, S, _ = criterion(out1=out1, out2=out2)
             refer_time += time.time() - ref_t0
+            # 核心处理：backward() 计算编码器参数的梯度，step() 根据这些梯度更新参数。
             loss.backward()
             optimizer.step()
             t1 = time.time()
@@ -138,5 +150,6 @@ class JOENA(BaseModel):
                            infer_time=round(refer_time, 4),
                            verbose=verbose)
 
+        # 结果去向：保留最后一次 criterion 生成的 S，交回入口；这里不在参数更新后重新计算矩阵。
         self.S = S.detach()
         return S.detach(), logger

@@ -1,3 +1,6 @@
+# 文件作用：集中导出训练日志、终端指标格式化和曲线绘图工具。
+# 结果去向：PlanetAlign/algorithms/base_model.py → BaseModel.init_training_logger() 从这里获取 TrainingLogger。
+
 import copy
 
 from .output import *

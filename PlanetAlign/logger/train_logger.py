@@ -1,3 +1,7 @@
+# 文件作用：收集算法每轮训练的损失、时间、排名分数和附加信息，可保存为 CSV/JSON。
+# 数据来源：PlanetAlign/algorithms/base_model.py → BaseModel.init_training_logger() 创建对象，各算法 train() 调用 log() 传入已算好的数值。
+# 结果去向：记录保存在 logs 内存列表及指定日志路径；该类不自行计算对齐指标。
+
 import os
 import csv
 import json
@@ -5,6 +9,7 @@ import datetime
 from typing import List, Dict, Optional, Union, Tuple
 
 
+# 功能：维护训练历史并按 save 选项写入 CSV，供算法训练循环使用。
 class TrainingLogger:
     """Logger class for tracking the training process of a network alignment algorithm.
 
@@ -23,6 +28,7 @@ class TrainingLogger:
     save : bool, optional
         Flag to save logs to file. Defaults to True.
     """
+    # 功能：确定日志列和精度；save=True 时创建目录并写入 CSV 表头。
     def __init__(self,
                  log_dir: str = "logs",
                  log_name: Optional[str] = None,
@@ -51,6 +57,8 @@ class TrainingLogger:
                 writer = csv.writer(f)
                 writer.writerow(self.headers)  # Write column headers
 
+    # 输入来源：算法每轮提供 epoch、loss、epoch_time、hits、mrr 与附加字段。
+    # 功能：追加内存记录，并按选项写 CSV 和打印；附加字段必须预先声明在表头。
     def log(self,
             epoch: int,
             loss: float,
@@ -100,6 +108,7 @@ class TrainingLogger:
         if verbose:
             print(self.format_log(log_entry))
 
+    # 功能：打印训练备注，开启保存时把备注作为注释行追加到 CSV。
     def log_comments(self, comments: Union[str, List[str], Tuple[str, ...]]):
         """
         Logs comments.
@@ -140,6 +149,7 @@ class TrainingLogger:
 
         return f"{title_str}\n{metrics_str}\n{add_info_str}"
 
+    # 功能：把内存训练历史写入同名 JSON；需要对象已初始化保存路径。
     def save_json(self):
         """
         Saves the logs as a JSON file for structured analysis.
@@ -149,6 +159,7 @@ class TrainingLogger:
             json.dump(self.logs, f, indent=4)
         print(f"Logs saved to {json_path}")
 
+    # 功能：从已记录轮次中找 MRR 最大的记录并打印；不改变模型或训练选择。
     def summary(self):
         """
         Prints a summary of the training process.

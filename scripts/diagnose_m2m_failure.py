@@ -1,3 +1,8 @@
+# 文件作用：分析一对一算法在多对多数据上的失败模式，分开记录盲分组与真实分组辅助诊断。
+# 核心依赖：PlanetAlign/m2m/blind.py → evaluate_blind()；PlanetAlign/m2m/diagnostics.py → oracle_grouped_topk() 等。
+# 结果去向：main() 将真实实体结构、矩阵边际与各算法诊断记录写入 --out JSON。
+# 阅读建议：先看 main() → run_one()，再看 gt_structure()/marginal_probe()；oracle 记录不能当成盲结果。
+
 """Diagnose *why* one-to-one network-alignment algorithms fail on many-to-many.
 
 This script produces the empirical evidence behind ``docs/m2m_why_one_to_one_fails.md``.
@@ -22,10 +27,10 @@ P3 OT marginal probe    OT couplings are (near) doubly-stochastic: every column
                         absorbs ~equal mass, so the many-to-one that N-1 entities
                         need is forbidden. Measured by column-sum dispersion and
                         argmax-target sharing, contrasted with the other families.
-P4 leak vs blind        the same ``S`` scored with the GT-leaking adapter vs the
-                        blind protocol; the gap shows reported M2M numbers for
-                        1-1 methods are inflated by the leak.
-P5 blind M2M metrics    the honest ACS/MSF1/MicroF1/M2M-SGS/M2M-EGS per method.
+P4 oracle vs blind      the same ``S`` is inspected with an explicitly
+                        GT-assisted target-ranking diagnostic and the blind
+                        protocol; the gap exposes the effect of oracle inputs.
+P5 blind M2M metrics    Macro Set-F1/Micro Set-F1/AUIS/AUCS per method.
 
 Every number written into the doc must come from this script's JSON output.
 
@@ -54,14 +59,19 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "planeta
 
 import PlanetAlign
 from PlanetAlign.data import Dataset
-from PlanetAlign.metrics import many_to_many_scores, similarity_to_pred_entities
-from PlanetAlign.m2m_blind import evaluate_blind
+from PlanetAlign.m2m.diagnostics import (
+    ORACLE_GROUPED_TOPK_PREFIX,
+    ORACLE_GROUPED_TOPK_PROTOCOL,
+    oracle_grouped_topk,
+    oracle_grouped_topk_target_metrics,
+)
+from PlanetAlign.m2m.blind import evaluate_blind
 from PlanetAlign.utils import pairwise_cosine_similarity
 
 
 GIDS = [0, 1]
 ONE_TO_ONE_METRICS = ["Hits@1", "Hits@10", "MRR"]
-M2M_METRICS = ["ACS", "MSF1", "MicroF1", "M2M-SGS", "M2M-EGS"]
+M2M_METRICS = ["Macro Set-F1", "Micro Set-F1", "AUIS", "AUCS"]
 
 # (root, name) pairs. douban carries fuzzy boundaries (overlap_ratio=0.05);
 # cora is the no-overlap variant. Both are attributed so use_attr methods run.
@@ -71,6 +81,7 @@ DEFAULT_DATASETS: List[Tuple[str, str]] = [
 ]
 
 
+# 功能：定义各算法家族的代表与短预算训练参数，供 run_one() 使用。
 def algo_configs() -> Dict[str, Dict[str, Any]]:
     """Representative method per family, with the quick-profile train kwargs."""
     return {
@@ -98,6 +109,7 @@ def algo_configs() -> Dict[str, Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # S extraction (mirrors scripts/run_m2m_experiments.py)
 # ---------------------------------------------------------------------------
+# 功能：统一不同代表算法的返回格式，使后续矩阵诊断可共用输入。
 def extract_s(algo: Any, ret: Tuple[Any, ...], mode: str, gids: List[int]) -> torch.Tensor:
     gid1, gid2 = gids
     if mode == "self.S":
@@ -120,6 +132,7 @@ def has_attrs(dataset: Dataset) -> bool:
 # ---------------------------------------------------------------------------
 # Probe 1 + 2: ground-truth-level facts (method independent)
 # ---------------------------------------------------------------------------
+# 功能：按真实实体两侧大小统计多对多比例，并估计单节点 argmax 读出的召回上限。
 def gt_structure(gt_entities: Dict[str, Dict[str, List[int]]]) -> Dict[str, Any]:
     arity = Counter()
     needs_intra_merge = 0           # entity has >1 node on some side (intra-graph co-reference)
@@ -154,6 +167,7 @@ def gt_structure(gt_entities: Dict[str, Dict[str, List[int]]]) -> Dict[str, Any]
 # ---------------------------------------------------------------------------
 # Probe 3: marginal / one-to-one structure of S
 # ---------------------------------------------------------------------------
+# 功能：统计 S 的行列总量、熵及多源节点共选目标的情况，返回矩阵结构诊断。
 def marginal_probe(S: torch.Tensor) -> Dict[str, Any]:
     S = S.detach().to(torch.float32).cpu()
     n1, n2 = S.shape
@@ -198,6 +212,7 @@ def marginal_probe(S: torch.Tensor) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Per-algorithm run
 # ---------------------------------------------------------------------------
+# 功能：训练一个代表算法并提取 S，记录节点评估、边际、盲分组和真实分组辅助结果。
 def run_one(dataset_name: str, dataset: Dataset, gt_entities, algo_name: str,
             cfg: Dict[str, Any], seed: int, verbose: bool) -> Dict[str, Any]:
     rec: Dict[str, Any] = {"dataset": dataset_name, "algorithm": algo_name,
@@ -225,9 +240,12 @@ def run_one(dataset_name: str, dataset: Dataset, gt_entities, algo_name: str,
         # P3: marginal / sharing structure.
         rec["marginal_probe"] = marginal_probe(S)
 
-        # P4: leak vs blind M2M metrics on the SAME S.
-        leak_pred = similarity_to_pred_entities(S, gt_entities)
-        rec["m2m_leak"] = many_to_many_scores(gt_entities, leak_pred, metrics=M2M_METRICS)
+        # P4: explicitly oracle-assisted target ranking vs blind M2M on the same S.
+        oracle_pred = oracle_grouped_topk(S, gt_entities)
+        rec["oracle_diagnostic"] = {
+            "protocol": ORACLE_GROUPED_TOPK_PROTOCOL,
+            **oracle_grouped_topk_target_metrics(gt_entities, oracle_pred),
+        }
         rec["m2m_blind"] = evaluate_blind(
             S, gt_entities, dataset.pyg_graphs[GIDS[0]], dataset.pyg_graphs[GIDS[1]],
             metrics=M2M_METRICS, use_attr=tk.get("use_attr", False),
@@ -255,6 +273,7 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+# 功能：加载请求的数据与真实实体，逐算法调用 run_one()，保存带协议说明的诊断 JSON。
 def main() -> int:
     args = parse_args()
     configs = algo_configs()
@@ -288,10 +307,14 @@ def main() -> int:
             rec = run_one(name, ds, gt, algo_name, cfg, args.seed, args.verbose)
             ds_report["algorithms"][algo_name] = rec
             if rec["status"] == "ok":
-                o, leak, blind = rec["one_to_one"], rec["m2m_leak"], rec["m2m_blind"]
+                o = rec["one_to_one"]
+                oracle = rec["oracle_diagnostic"]
+                blind = rec["m2m_blind"]
                 shar = rec["marginal_probe"]["argmax_sharing"]
                 print(f"        ok {rec['time_s']:.1f}s  Hits@1={o['Hits@1']:.4f}  "
-                      f"MicroF1 leak={leak['MicroF1']:.4f} / blind={blind['MicroF1']:.4f}  "
+                      f"Target-MicroF1 oracle-diagnostic="
+                      f"{oracle[f'{ORACLE_GROUPED_TOPK_PREFIX}Target-MicroF1']:.4f} "
+                      f"/ blind-Micro Set-F1={blind['Micro Set-F1']:.4f}  "
                       f"max_src_per_tgt={shar['max_sources_per_target']}")
             else:
                 print(f"        {rec['status']}: {rec.get('error')}")

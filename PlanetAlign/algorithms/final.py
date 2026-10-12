@@ -1,3 +1,7 @@
+# 文件作用：实现 FINAL，在图结构传播中结合节点属性、边属性和训练锚点。
+# 数据来源：README 的一对一示例或 PlanetAlign/m2m/base.py → train_base_S() 传入 Dataset。
+# 结果去向：train() 保存 self.S 并返回 S 与日志；BaseModel.test() 可直接用 self.S 做节点评估。
+
 import time
 from typing import List, Union, Tuple
 import torch
@@ -12,6 +16,7 @@ from PlanetAlign.metrics import hits_ks_scores, mrr_score
 from .base_model import BaseModel
 
 
+# 功能：提供带属性的两图对齐算法，继承 BaseModel 的输入检查与评估接口。
 class FINAL(BaseModel):
     """Consistency-based method FINAL for pairwise attributed network alignment.
     FINAL is proposed by the paper "`FINAL: Fast Attributed Network Alignment <https://dl.acm.org/doi/abs/10.1145/2939672.2939766>`_"
@@ -32,6 +37,9 @@ class FINAL(BaseModel):
         assert 0 <= alpha <= 1, 'Alpha must be in the range [0, 1]'
         self.alpha = alpha
 
+    # 输入来源：dataset.pyg_graphs 提供边与可选属性，train_data 提供锚点，test_data 只参与每轮日志评估。
+    # 核心思路：准备节点特征与分通道边邻接矩阵，用属性加权的结构传播反复更新锚点匹配分数。
+    # 输出结果：返回 S、日志并保存在 self.S，供一对一评估或由包装器转交多对多解码。
     def train(self, 
               dataset: Dataset,
               gids: Union[Tuple[int, int], List[int]],
@@ -141,6 +149,7 @@ class FINAL(BaseModel):
         self.S = S
         return S, logger
 
+    # 功能：归一化节点属性；关闭属性时使用全 1 特征，供 train() 计算跨图节点相似度。
     def init_node_feat(self, graph, use_attr=True):
         if graph.x is None or not use_attr:
             node_attr = torch.ones(graph.num_nodes, 1, dtype=self.dtype).to(self.device)
@@ -148,6 +157,7 @@ class FINAL(BaseModel):
             node_attr = graph.x.to(self.dtype).to(self.device)
         return F.normalize(node_attr, p=2, dim=1)
 
+    # 功能：按边属性通道建立邻接矩阵；关闭属性时使用单个统一边通道。
     def init_edge_feat_adj(self, graph, use_attr=True):
         if graph.edge_attr is None or not use_attr:
             edge_attr = torch.ones(graph.edge_index.shape[1], 1, dtype=self.dtype).to(self.device)

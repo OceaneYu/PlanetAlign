@@ -1,0 +1,7 @@
+interface:
+  display_name: "Baseline Integrate"
+  short_description: "Explicitly integrate a qualified baseline into PlanetAlign."
+  default_prompt: "Formally integrate the named qualified baseline from .reference into PlanetAlign and verify migration equivalence."
+
+policy:
+  allow_implicit_invocation: false

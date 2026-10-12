@@ -1,9 +1,15 @@
+# 文件作用：按数据集和算法批量训练，再用统一 QuotientDecode 评估多对多实体匹配。
+# 核心依赖：PlanetAlign/algorithms/ 的 train()；PlanetAlign/m2m/quotient.py → evaluate_quotient_blind()；PlanetAlign/data/dataset.py → Dataset。
+# 核心处理：evaluate_algorithm() 生成矩阵并校验，真实实体只交给评分；oracle 诊断需单独开启。
+# 结果去向：_write_outputs() 写 JSON/CSV，main() 打印批次摘要。
+# 阅读建议：main() → _algo_configs() → evaluate_algorithm() → _extract_s()，先区分各算法返回格式。
+
 """Run many-to-many benchmarks on selected datasets and algorithms.
 
 The script generalizes the old Douban-only runners. It loads generated
 ``*_m2m.pt`` datasets plus their ``*_gt_many2many.json`` files, trains selected
 PlanetAlign algorithms, converts each similarity matrix into many-to-many
-groups, and writes JSON/CSV summaries.
+groups with the blind quotient decoder, and writes JSON/CSV summaries.
 
 Recommended first sweep:
 
@@ -43,12 +49,11 @@ import argparse
 import csv
 import json
 import os
-import sys
 import tempfile
 import time
 import traceback
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
@@ -56,33 +61,34 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "planeta
 
 import PlanetAlign
 from PlanetAlign.data import Dataset
-from PlanetAlign.metrics import many_to_many_scores, similarity_to_pred_entities
-from PlanetAlign.utils import pairwise_cosine_similarity
+from PlanetAlign.m2m.diagnostics import (
+    ORACLE_GROUPED_TOPK_PROTOCOL,
+    oracle_grouped_topk,
+    oracle_grouped_topk_target_metrics,
+)
+from PlanetAlign.m2m.quotient import evaluate_quotient_blind
+from PlanetAlign.utils import get_anchor_pairs, pairwise_cosine_similarity
 
 
 GIDS = [0, 1]
 RECOMMENDED_DATASETS = ["pems08_m2m", "airport_m2m", "cora_m2m"]
-ONE_TO_ONE_METRICS = ["Hits@1", "Hits@10", "MRR"]
-M2M_METRICS = ["ACS", "MSF1", "MicroF1", "M2M-SGS", "M2M-EGS"]
+M2M_METRICS = ["Macro Set-F1", "Micro Set-F1", "AUIS", "AUCS"]
 CSV_FIELDS = [
     "dataset",
     "algorithm",
     "status",
     "profile",
     "time_s",
-    "Hits@1",
-    "Hits@10",
-    "MRR",
-    "ACS",
-    "MSF1",
-    "MicroF1",
-    "M2M-SGS",
-    "M2M-EGS",
-    "TGAE-local-ACS",
-    "TGAE-local-MSF1",
-    "TGAE-local-MicroF1",
-    "TGAE-local-M2M-SGS",
-    "TGAE-local-M2M-EGS",
+    "m2m_protocol",
+    "Blind-Macro Set-F1",
+    "Blind-Micro Set-F1",
+    "Blind-AUIS",
+    "Blind-AUCS",
+    "oracle_protocol",
+    "OracleSrc+GT-K-Target-MicroF1",
+    "OracleSrc+GT-K-Target-MSF1",
+    "OracleSrc+GT-K-Target-Recall@GT-K",
+    "oracle_diagnostic_error",
     "error",
 ]
 
@@ -97,6 +103,8 @@ def _sim_from_inner_product(emb1: torch.Tensor, emb2: torch.Tensor) -> torch.Ten
     return emb1.detach().to(torch.float32).cpu() @ emb2.detach().to(torch.float32).cpu().T
 
 
+# 输入来源：evaluate_algorithm() 传入训练对象、train() 返回值和配置 mode。
+# 输出结果：从 self.S、直接返回矩阵或嵌入提取 CPU float32 的 S，供统一解码。
 def _extract_s(algo: Any, ret: Tuple[Any, ...], mode: str, dataset: Dataset, gids: List[int]) -> torch.Tensor:
     gid1, gid2 = gids
     if mode == "self.S":
@@ -126,6 +134,7 @@ def _full(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     return dict(kwargs)
 
 
+# 功能：按实验 profile 定义算法工厂、训练参数和结果模式；显式跳过未实现或不适用接口。
 def _algo_configs(profile: str) -> Dict[str, Dict[str, Any]]:
     if profile == "quick":
         return {
@@ -316,6 +325,7 @@ def _available_dataset_names(root: Path) -> List[str]:
     return sorted(path.stem for path in root.glob("*_m2m.pt"))
 
 
+# 功能：检查请求的数据集名，未指定时扫描 *_m2m.pt。
 def _resolve_datasets(root: Path, requested: Optional[List[str]]) -> List[str]:
     available = _available_dataset_names(root)
     if not requested:
@@ -328,6 +338,7 @@ def _resolve_datasets(root: Path, requested: Optional[List[str]]) -> List[str]:
     return requested
 
 
+# 功能：按名称、别名与排除列表选择算法，未知名称报错。
 def _resolve_algorithms(
     configs: Dict[str, Dict[str, Any]],
     requested: Optional[List[str]],
@@ -365,6 +376,7 @@ def _resolve_algorithms(
     return resolved
 
 
+# 输出结果：读取基准真实实体 JSON 的完整负载，main() 再从 entities 字段取实体。
 def _load_gt(root: Path, dataset_name: str) -> Dict[str, Any]:
     gt_path = root / f"{dataset_name}_gt_many2many.json"
     if not gt_path.exists():
@@ -377,6 +389,9 @@ def _flatten_metrics(prefix: str, metrics: Dict[str, float]) -> Dict[str, float]
     return {f"{prefix}{key}": value for key, value in metrics.items()}
 
 
+# 输入来源：main() 传入已经加载的 Dataset、真实实体与一个算法配置。
+# 核心思路：训练后经 _extract_s() 取得 S，检查形状与有限值，再把 S、图和训练锚点交给 evaluate_quotient_blind()。
+# 输出结果：返回状态、耗时和带 Blind- 前缀的指标；可选 oracle 分数另行标记，异常不终止整批。
 def evaluate_algorithm(
     dataset_name: str,
     dataset: Dataset,
@@ -387,6 +402,7 @@ def evaluate_algorithm(
     seed: int,
     verbose: bool,
     auto_disable_attr: bool,
+    include_oracle_diagnostic: bool = False,
 ) -> Dict[str, Any]:
     record: Dict[str, Any] = {
         "dataset": dataset_name,
@@ -408,10 +424,6 @@ def evaluate_algorithm(
     started = time.perf_counter()
     try:
         algo = config["factory"]().to("cpu")
-        if config.get("needs_num_groups"):
-            train_kwargs.setdefault("num_groups", len(gt_entities))
-        if config.get("oracle_num_groups"):
-            train_kwargs.setdefault("oracle_num_groups", True)
         ret = algo.train(
             dataset=dataset,
             gids=GIDS,
@@ -424,44 +436,50 @@ def evaluate_algorithm(
         s = _extract_s(algo, ret, config["mode"], dataset, GIDS)
         algo.S = s.to(algo.device)
 
-        one_to_one = algo.test(dataset=dataset, gids=GIDS, metrics=ONE_TO_ONE_METRICS)
-        pred = similarity_to_pred_entities(s, gt_entities)
-        m2m = many_to_many_scores(gt_entities, pred, metrics=M2M_METRICS)
+        expected_shape = (
+            int(dataset.pyg_graphs[GIDS[0]].num_nodes),
+            int(dataset.pyg_graphs[GIDS[1]].num_nodes),
+        )
+        if tuple(s.shape) != expected_shape:
+            raise ValueError(f"similarity shape {tuple(s.shape)} does not match graph sizes {expected_shape}")
+        if not torch.isfinite(s).all():
+            raise ValueError("similarity contains NaN or infinite values")
 
-        logged_train_kwargs = {
-            key: value for key, value in train_kwargs.items()
-            if key != "gt_entities"
-        }
-        if "gt_entities" in train_kwargs:
-            logged_train_kwargs["num_gt_entities"] = len(train_kwargs["gt_entities"])
+        anchors = get_anchor_pairs(dataset.train_data, GIDS[0], GIDS[1])
+        blind_scores, _, quotient_info = evaluate_quotient_blind(
+            s,
+            gt_entities,
+            dataset.pyg_graphs[GIDS[0]],
+            dataset.pyg_graphs[GIDS[1]],
+            metrics=M2M_METRICS,
+            return_predictions=True,
+            use_attr=_has_node_attributes(dataset, GIDS),
+            anchors=anchors,
+        )
+
+        logged_train_kwargs = dict(train_kwargs)
 
         record.update(
             {
                 "status": "ok",
                 "time_s": round(time.perf_counter() - started, 4),
                 "train_kwargs": logged_train_kwargs,
-                **one_to_one,
-                **m2m,
+                "m2m_protocol": "blind_quotient_decode",
+                "quotient_decode": quotient_info,
+                **_flatten_metrics("Blind-", blind_scores),
             }
         )
-        if algo_name == "TGAE":
-            local_pred = algo.predict_many_to_many(
-                gt_entities,
-                mode="local_expand",
-                relax_ratio=1.03,
-                target_dup_sim_ratio=1.03,
-                max_extra_targets=3,
-            )
-            local_scores = many_to_many_scores(gt_entities, local_pred, metrics=M2M_METRICS)
-            record.update(_flatten_metrics("TGAE-local-", local_scores))
+
+        if include_oracle_diagnostic:
+            try:
+                oracle_pred = oracle_grouped_topk(s, gt_entities)
+                record["oracle_protocol"] = ORACLE_GROUPED_TOPK_PROTOCOL
+                record.update(oracle_grouped_topk_target_metrics(gt_entities, oracle_pred))
+            except Exception as oracle_exc:  # keep the blind result valid.
+                record["oracle_diagnostic_error"] = f"{type(oracle_exc).__name__}: {oracle_exc}"
 
     except Exception as exc:  # pragma: no cover - intentionally keeps long sweeps alive.
-        logged_train_kwargs = {
-            key: value for key, value in train_kwargs.items()
-            if key != "gt_entities"
-        }
-        if "gt_entities" in train_kwargs:
-            logged_train_kwargs["num_gt_entities"] = len(train_kwargs["gt_entities"])
+        logged_train_kwargs = dict(train_kwargs)
         record.update(
             {
                 "status": "error",
@@ -474,6 +492,7 @@ def evaluate_algorithm(
     return record
 
 
+# 功能：将本批 records 与运行参数写 JSON，并把可比较字段整理为 CSV，返回输出路径。
 def _write_outputs(records: List[Dict[str, Any]], out_dir: Path, tag: str, args: argparse.Namespace) -> Tuple[Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / f"{tag}.json"
@@ -486,6 +505,7 @@ def _write_outputs(records: List[Dict[str, Any]], out_dir: Path, tag: str, args:
             "exclude": args.exclude,
             "profile": args.profile,
             "seed": args.seed,
+            "include_oracle_diagnostic": args.include_oracle_diagnostic,
         },
         "records": records,
     }
@@ -503,15 +523,16 @@ def _write_outputs(records: List[Dict[str, Any]], out_dir: Path, tag: str, args:
 def _print_summary(records: List[Dict[str, Any]]) -> None:
     print("\nSummary")
     print("=" * 96)
-    header = f"{'dataset':<18}{'algorithm':<14}{'status':<9}{'Hits@1':>9}{'MSF1':>9}{'MicroF1':>10}{'M2M-SGS':>10}{'time(s)':>9}"
+    header = f"{'dataset':<18}{'algorithm':<14}{'status':<9}{'Macro Set-F1':>15}{'Micro Set-F1':>15}{'AUIS':>9}{'AUCS':>9}{'time(s)':>9}"
     print(header)
     print("-" * len(header))
     for r in records:
         if r.get("status") == "ok":
             print(
                 f"{r['dataset']:<18}{r['algorithm']:<14}{r['status']:<9}"
-                f"{r.get('Hits@1', 0):>9.4f}{r.get('MSF1', 0):>9.4f}"
-                f"{r.get('MicroF1', 0):>10.4f}{r.get('M2M-SGS', 0):>10.4f}"
+                f"{r.get('Blind-Macro Set-F1', 0):>15.4f}"
+                f"{r.get('Blind-Micro Set-F1', 0):>15.4f}{r.get('Blind-AUIS', 0):>9.4f}"
+                f"{r.get('Blind-AUCS', 0):>9.4f}"
                 f"{r.get('time_s', 0):>9.1f}"
             )
         else:
@@ -519,6 +540,7 @@ def _print_summary(records: List[Dict[str, Any]]) -> None:
             print(f"{r['dataset']:<18}{r['algorithm']:<14}{r['status']:<9}{err}")
 
 
+# 功能：解析基准目录、数据集、算法与实验 profile 等批次选项。
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run M2M experiments on selected datasets and algorithms.")
     parser.add_argument("--m2m-root", type=Path, default=Path("data/m2m_no_overlap"))
@@ -541,11 +563,21 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Do not turn use_attr off automatically on datasets without node attributes.",
     )
+    parser.add_argument(
+        "--include-oracle-diagnostic",
+        action="store_true",
+        help=(
+            "Also report target-ranking diagnostics conditioned on ground-truth "
+            "source groups and target cardinalities. Disabled by default."
+        ),
+    )
     parser.add_argument("--list-algorithms", action="store_true")
     parser.add_argument("--list-datasets", action="store_true")
     return parser.parse_args()
 
 
+# 核心思路：解析并检查清单，逐数据集加载图和实体，逐算法调用 evaluate_algorithm()。
+# 输出结果：保存结果、打印摘要，以退出码报告是否有运行错误。
 def main() -> int:
     args = parse_args()
     args.m2m_root = args.m2m_root.expanduser()
@@ -564,6 +596,7 @@ def main() -> int:
     print(f"Datasets   : {', '.join(dataset_names)}")
     print(f"Algorithms : {', '.join(algorithm_names)}")
     print(f"Profile    : {args.profile}")
+    print(f"Oracle diag: {'enabled' if args.include_oracle_diagnostic else 'disabled'}")
 
     records: List[Dict[str, Any]] = []
     for dataset_name in dataset_names:
@@ -591,15 +624,17 @@ def main() -> int:
                 seed=args.seed,
                 verbose=args.verbose,
                 auto_disable_attr=not args.no_auto_disable_attr,
+                include_oracle_diagnostic=args.include_oracle_diagnostic,
             )
             records.append(record)
             status = record["status"]
             if status == "ok":
                 print(
                     f"      ok {record['time_s']:.1f}s "
-                    f"Hits@1={record['Hits@1']:.4f} "
-                    f"MSF1={record['MSF1']:.4f} "
-                    f"MicroF1={record['MicroF1']:.4f}"
+                    f"Macro Set-F1={record['Blind-Macro Set-F1']:.4f} "
+                    f"Micro Set-F1={record['Blind-Micro Set-F1']:.4f} "
+                    f"AUIS={record['Blind-AUIS']:.4f} "
+                    f"AUCS={record['Blind-AUCS']:.4f}"
                 )
             else:
                 print(f"      {status}: {record.get('error', '')}")

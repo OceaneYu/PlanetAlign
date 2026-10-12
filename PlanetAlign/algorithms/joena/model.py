@@ -1,3 +1,7 @@
+# 文件作用：定义 JOENA 的共享向量编码器与联合节点、结构匹配损失。
+# 数据来源：PlanetAlign/algorithms/joena/main.py → JOENA.train() 构建对象并传入两侧输入特征。
+# 核心依赖：PlanetAlign/algorithms/joena/utils.py → sinkhorn_stable() 从匹配代价求传输矩阵；PlanetAlign/m2m/contrastive.py 复用这些类。
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,6 +10,7 @@ from torch_geometric.utils import to_dense_adj
 from .utils import sinkhorn_stable
 
 
+# 功能：将两侧特征送入共享线性层，输出归一化节点嵌入。
 class MLP(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(MLP, self).__init__()
@@ -13,6 +18,9 @@ class MLP(torch.nn.Module):
         self.lin2 = torch.nn.Linear(input_dim + hidden_dim, output_dim)
         self.act = nn.ReLU()
 
+    # 输入来源：PlanetAlign/algorithms/joena/main.py → JOENA.train() 用 model(input_emb1, input_emb2) 间接触发。
+    # 核心思路：两侧共用线性层，拼接原特征与隐藏特征后投影、归一化，返回 [节点数, output_dim] 向量。
+    # 输出结果：返回两侧节点嵌入，交给 FusedGWLoss.forward() 计算匹配代价。
     def forward(self, x1, x2):
         pos_emd1 = torch.cat([x1, self.act(self.lin1(x1))], dim=1)
         pos_emd2 = torch.cat([x2, self.act(self.lin1(x2))], dim=1)
@@ -23,6 +31,7 @@ class MLP(torch.nn.Module):
         return pos_emd1, pos_emd2
 
 
+# 功能：保存两图邻接矩阵，并将节点代价与图结构代价合成可优化损失。
 class FusedGWLoss(torch.nn.Module):
     def __init__(self, graph1, graph2, gw_weight=20, gamma_p=1e-2, init_lambda=1, lambda_step=1e-2, in_iter=5, out_iter=10, dtype=torch.float64):
         super().__init__()
@@ -39,6 +48,10 @@ class FusedGWLoss(torch.nn.Module):
         self.adj1 = to_dense_adj(graph1.edge_index, max_num_nodes=graph1.num_nodes).squeeze().to(self.dtype)
         self.adj2 = to_dense_adj(graph2.edge_index, max_num_nodes=graph2.num_nodes).squeeze().to(self.dtype)
 
+    # 输入来源：PlanetAlign/algorithms/joena/main.py → JOENA.train() 的 criterion(out1=..., out2=...) 间接触发，参数来自 MLP.forward()。
+    # 核心处理：S 在 no_grad 中求出；后续损失仍依赖嵌入构造的代价，梯度通过这些代价返回编码器。
+    # 核心思路：从嵌入构造代价，调用 PlanetAlign/algorithms/joena/utils.py → sinkhorn_stable() 求 S，再计算联合损失。
+    # 输出结果：返回 loss、S 和阈值参数，训练入口用 loss 反向传播并保存 S。
     def forward(self, out1, out2):
         inter_c = torch.exp(-(out1 @ out2.T))
         intra_c1 = torch.exp(-(out1 @ out1.T)) * self.adj1
@@ -70,6 +83,7 @@ class FusedGWLoss(torch.nn.Module):
         loss = w_loss + self.gw_weight * gw_loss + 20
         return loss, s, self.threshold_lambda
 
+    # 功能：根据当前传输矩阵调整阈值参数，供 forward() 更新代价。
     def _update_lambda(self, inter_c, intra_c1, intra_c2, s):
         k1 = torch.sum(inter_c)
 

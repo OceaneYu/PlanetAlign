@@ -1,3 +1,8 @@
+# 文件作用：计算 AUIS，观察真实组的成员是否仍集中在预测组中。
+# 数据来源：PlanetAlign/metrics/many_to_many.py → many_to_many_scores() 调用 auis_score() 并传入实体字典。
+# 核心处理：将 src/tgt 节点转换为带侧标记的集合，统计真实组与全部预测组的重叠；不要求组编号一致。
+# 阅读建议：先读 auis_score() → _auis_score_details()；weighted 版本是按组大小加权的补充诊断。
+
 import json
 from pathlib import Path
 from typing import Dict, List, Any, Set, Tuple
@@ -5,18 +10,19 @@ import re
 import matplotlib.pyplot as plt
 
 """
-M2M-EGS 指标实现
+Alignment Unit Integrity Score (AUIS) 指标实现
 
 思想：
 - GT 中每个 entity 视为一个真实群组 g
 - Pred 中每个 entity 视为一个预测簇 C_j
-- 对每个 g，统计它在多少个预测簇中出现：
-      EG(g) = |{j : |g ∩ C_j| > 0}|
-- 再归一化得到 M2M-EGS(g)
+- 对每个 g，统计它在所有预测簇中的分布 a_j^(g) = |g ∩ C_j|
+- R(g) = sum_j (a_j^(g))^2
+- AUIS(g) = (R(g) - N_g) / (N_g^2 - N_g),  当 N_g > 1
+- 最终输出：
+    1) auis: 所有 group 的简单平均
+    2) weighted_auis: 按 group 大小 N_g 加权平均
 
-最终输出：
-    1) macro_m2m_egs: 所有 group 的简单平均
-    2) weighted_m2m_egs: 按 group 大小 N_g 加权平均
+AUIS 衡量 GT alignment unit 在所有预测簇中的集中程度。
 """
 
 
@@ -43,6 +49,13 @@ def infer_network_keys(gt_entities: Dict[str, Dict[str, List[int]]]) -> List[str
 def entity_to_node_set(entity: Dict[str, List[int]], network_keys: List[str]) -> Set[Node]:
     """
     把一个 entity 转成带网络侧标识的节点集合。
+    例如：
+      {"src":[1,2], "tgt":[3]}
+    ->
+      {("src",1), ("src",2), ("tgt",3)}
+
+    为什么要带上 "src"/"tgt"？
+    因为 src 的 100 和 tgt 的 100 不是同一个节点。
     """
     nodes: Set[Node] = set()
     for k in network_keys:
@@ -56,7 +69,8 @@ def build_group_sets(
     network_keys: List[str]
 ) -> Dict[str, Set[Node]]:
     """
-    entities -> eid 到节点集合的映射
+    把 entities 转成：
+      eid -> 节点集合
     """
     out: Dict[str, Set[Node]] = {}
     for eid, item in entities.items():
@@ -64,26 +78,24 @@ def build_group_sets(
     return out
 
 
-def m2m_egs_score(
+# 功能：按真实组统计与预测组的重叠，返回每组详情、宏平均值和按组大小加权值。
+def _auis_score_details(
     gt_entities: Dict[str, Dict[str, List[int]]],
     pred_entities: Dict[str, Dict[str, List[int]]],
     network_keys: List[str] = None,
 ) -> Dict[str, Any]:
     """
-    计算 M2M-EGS
+    计算 AUIS
 
     对每个 GT 群组 g:
       a_j^(g) = | g ∩ C_j |
-      EG(g)   = |{j : a_j^(g) > 0}|
-      N_g     = |g|
-      M       = 预测簇总数
-
-      M2M-EGS(g) = (min(N_g, M) - EG(g)) / (min(N_g, M) - 1), 当 min(N_g, M) > 1
-                   1, 其他情况
+      R(g)    = Σ_j (a_j^(g))^2
+      N_g    = |g|
+      AUIS(g) = (R(g)-N_g)/(N_g^2-N_g), N_g>1; 否则记为1
 
     最终返回：
-      - macro_m2m_egs
-      - weighted_m2m_egs
+      - auis
+      - weighted_auis
       - 每个 group 的详细信息
     """
     if network_keys is None:
@@ -92,15 +104,12 @@ def m2m_egs_score(
     gt_groups = build_group_sets(gt_entities, network_keys)
     pred_clusters = build_group_sets(pred_entities, network_keys)
 
-    M = len(pred_clusters)
-
     if not gt_groups:
         return {
-            "macro_m2m_egs": 0.0,
-            "weighted_m2m_egs": 0.0,
+            "auis": 0.0,
+            "weighted_auis": 0.0,
             "num_groups": 0.0,
             "total_gt_nodes": 0.0,
-            "num_pred_clusters": float(M),
             "per_group": {},
             "network_keys": network_keys,
         }
@@ -111,54 +120,55 @@ def m2m_egs_score(
     weighted_den = 0.0
     total_gt_nodes = 0
 
-    for gid, g_nodes in gt_groups.items(): # 遍历每个 GT 群组
-        N_g = len(g_nodes) # 群组大小
-        total_gt_nodes += N_g # 统计总的 GT 节点数 ，所有的群组大小加在一起
+    for gid, g_nodes in gt_groups.items():
+        N_g = len(g_nodes)
+        total_gt_nodes += N_g
 
-        counts_by_pred: Dict[str, int] = {} # 统计 g 在每个预测簇中的重叠大小
-        exposed = 0
+        counts_by_pred: Dict[str, int] = {}
+        integrity_raw = 0
 
-        # 看 g 出现在多少个预测簇里
-        for pid, pred_nodes in pred_clusters.items(): # 遍历每个预测簇
-            overlap = len(g_nodes & pred_nodes) # 计算 g 与 预测簇的重叠大小
-            if overlap > 0: # 如果有重叠，说明 g 在这个预测簇里被“暴露”了
-                counts_by_pred[pid] = overlap # 记录 g 在这个预测簇里的重叠大小
-                exposed += 1 # 统计 g 被暴露的次数，即出现在多少个预测簇里
+        # 遍历所有预测簇，看 GT group 在哪些簇里出现，以及各出现多少次
+        for pid, pred_nodes in pred_clusters.items():
+            overlap = len(g_nodes & pred_nodes)
+            if overlap > 0:
+                counts_by_pred[pid] = overlap
+                integrity_raw += overlap * overlap
 
-        max_exposed = min(N_g, M) # g 最多只能被暴露 min(N_g, M) 次，因为预测簇总数是 M，g 的大小是 N_g
-
-        if max_exposed <= 1:
-            m2m_egs_g = 1.0
+        # 归一化
+        if N_g <= 1:
+            auis_g = 1.0
         else:
-            m2m_egs_g = (max_exposed - exposed) / (max_exposed - 1) # 归一化，得到 M2M-EGS(g)
-            m2m_egs_g = max(0.0, min(1.0, m2m_egs_g))
+            denom = N_g * N_g - N_g
+            auis_g = (integrity_raw - N_g) / denom if denom != 0 else 1.0
+            # 数值安全截断
+            auis_g = max(0.0, min(1.0, auis_g))
 
-        macro_vals.append(m2m_egs_g) # 收集每个 group 的 M2M-EGS，后续计算 macro 平均
-        weighted_num += m2m_egs_g * N_g # 加权累加 M2M-EGS * group 大小，后续计算 weighted 平均
-        weighted_den += N_g # 累加 group 大小，后续计算 weighted 平均
+        macro_vals.append(auis_g)
+        weighted_num += auis_g * N_g
+        weighted_den += N_g
 
         per_group[gid] = {
             "N_g": float(N_g),
-            "EG_g": float(exposed),
-            "MaxExposed_g": float(max_exposed),
-            "M2M_EGS_g": float(m2m_egs_g),
+            "IntegritySum_g": float(integrity_raw),
+            "AUIS_g": float(auis_g),
+            "NumTouchedPredClusters": float(len(counts_by_pred)),
             "CountsByPred": counts_by_pred,
         }
 
-    macro_m2m_egs = sum(macro_vals) / len(macro_vals) if macro_vals else 0.0
-    weighted_m2m_egs = weighted_num / weighted_den if weighted_den != 0 else 0.0
+    auis = sum(macro_vals) / len(macro_vals) if macro_vals else 0.0
+    weighted_auis = weighted_num / weighted_den if weighted_den != 0 else 0.0
 
     return {
-        "macro_m2m_egs": float(macro_m2m_egs),
-        "weighted_m2m_egs": float(weighted_m2m_egs),
+        "auis": float(auis),
+        "weighted_auis": float(weighted_auis),
         "num_groups": float(len(gt_groups)),
         "total_gt_nodes": float(total_gt_nodes),
-        "num_pred_clusters": float(M),
         "per_group": per_group,
         "network_keys": network_keys,
     }
 
 
+# 功能：批量读取预测文件并计算 AUIS，将宏平均与加权分数写为曲线和 CSV。
 def evaluate_pred_folder(
     gt_path: Path,
     pred_dir: Path,
@@ -167,7 +177,7 @@ def evaluate_pred_folder(
 ) -> None:
     """
     遍历 pred_dir 下所有 pred_err_*.json，
-    计算每个预测文件的 M2M-EGS，并按误差率画图。
+    计算每个预测文件的 AUIS，并按误差率画图。
     """
     gt_entities = load_entities(gt_path)
     network_keys = infer_network_keys(gt_entities)
@@ -179,8 +189,9 @@ def evaluate_pred_folder(
         raise ValueError(f"{pred_dir} 下找不到 {file_prefix}*.json")
 
     xs = []  # 误差率
-    ys_macro = []  # macro M2M-EGS
-    ys_weighted = []  # weighted M2M-EGS
+    ys_macro = []  # macro AUIS
+    ys_weighted = []  # weighted AUIS
+    records = []
 
     print(f"GT: {gt_path}")
     print(f"Pred dir: {pred_dir}")
@@ -189,23 +200,31 @@ def evaluate_pred_folder(
 
     for pf in pred_files:
         pred_entities = load_entities(pf)
-        res = m2m_egs_score(gt_entities, pred_entities, network_keys)
+        res = _auis_score_details(gt_entities, pred_entities, network_keys)
 
         # 从文件名 pred_err_0.2.json 解析出 0.2
         m = re.search(r"pred_err_([0-9.]+)\.json", pf.name)
         err = float(m.group(1)) if m else float("nan")
 
         xs.append(err)
-        ys_macro.append(res["macro_m2m_egs"])
-        ys_weighted.append(res["weighted_m2m_egs"])
+        ys_macro.append(res["auis"])
+        ys_weighted.append(res["weighted_auis"])
+
+        records.append({
+            "file": pf.name,
+            "error_rate": err,
+            "auis": res["auis"],
+            "weighted_auis": res["weighted_auis"],
+            "num_groups": res["num_groups"],
+            "total_gt_nodes": res["total_gt_nodes"],
+        })
 
         print(
             f"{pf.name:20s}  "
-            f"macro={res['macro_m2m_egs']:.4f}  "
-            f"weighted={res['weighted_m2m_egs']:.4f}  "
+            f"macro={res['auis']:.4f}  "
+            f"weighted={res['weighted_auis']:.4f}  "
             f"groups={int(res['num_groups'])}  "
-            f"nodes={int(res['total_gt_nodes'])}  "
-            f"pred_clusters={int(res['num_pred_clusters'])}"
+            f"nodes={int(res['total_gt_nodes'])}"
         )
 
     # 按误差率排序
@@ -215,17 +234,17 @@ def evaluate_pred_folder(
     # 保存 csv
     out_csv = out_png.with_suffix(".csv")
     with open(out_csv, "w", encoding="utf-8") as f:
-        f.write("error_rate,macro_m2m_egs,weighted_m2m_egs\n")
+        f.write("error_rate,auis,weighted_auis\n")
         for x, y1, y2 in zip(xs, ys_macro, ys_weighted):
             f.write(f"{x:.10f},{y1:.10f},{y2:.10f}\n")
 
-    # 画图
+    # 画图：一张图两条线，不指定颜色
     plt.figure()
-    plt.plot(xs, ys_macro, marker="o", label="Macro M2M-EGS")
-    plt.plot(xs, ys_weighted, marker="s", label="Weighted M2M-EGS")
+    plt.plot(xs, ys_macro, marker="o", label="Macro AUIS")
+    plt.plot(xs, ys_weighted, marker="s", label="Weighted AUIS")
     plt.xlabel("Error rate")
-    plt.ylabel("M2M-EGS")
-    plt.title("M2M-EGS vs Error rate")
+    plt.ylabel("AUIS")
+    plt.title("AUIS vs Error rate")
     plt.ylim(0, 1.05)
     plt.grid(True)
     plt.legend()
@@ -235,25 +254,24 @@ def evaluate_pred_folder(
     print(f"Saved csv: {out_csv}")
     print(f"Saved plot: {out_png}")
 
-# 直接调用 m2m_egs_score 计算 macro M2M-EGS，一个明确的包装函数，方便外部调用。
-def egs_score(
-    gt_entities: Dict[str, Dict[str, List[int]]],
-    pred_entities: Dict[str, Dict[str, List[int]]],
-) -> float:
-    """
-    默认把 EGS 定义为 macro_m2m_egs，便于总控脚本统一调用。
-    """
-    return m2m_egs_score(gt_entities, pred_entities)["macro_m2m_egs"]
 
-# 直接调用 m2m_egs_score 计算 weighted M2M-EGS，一个明确的包装函数，方便外部调用。
-def egs_weighted_score(
+# 输出结果：返回 AUIS 的宏平均标量，供统一指标入口汇总。
+def auis_score(
     gt_entities: Dict[str, Dict[str, List[int]]],
     pred_entities: Dict[str, Dict[str, List[int]]],
 ) -> float:
-    """
-    若后续想比较 weighted 版本，可单独调用。
-    """
-    return m2m_egs_score(gt_entities, pred_entities)["weighted_m2m_egs"]
+    """Compute the macro Alignment Unit Integrity Score."""
+    return _auis_score_details(gt_entities, pred_entities)["auis"]
+
+
+# 输出结果：返回按真实组节点数加权的 AUIS，作为显式请求的补充指标。
+def weighted_auis_score(
+    gt_entities: Dict[str, Dict[str, List[int]]],
+    pred_entities: Dict[str, Dict[str, List[int]]],
+) -> float:
+    """Compute the existing size-weighted AUIS diagnostic."""
+    return _auis_score_details(gt_entities, pred_entities)["weighted_auis"]
+
 
 if __name__ == "__main__":
     BASE = Path(__file__).resolve().parent
@@ -262,7 +280,7 @@ if __name__ == "__main__":
     DATASETS = ["Facebook-Twitter", "Arxiv1-Arxiv2", "DBLP1-DBLP2"]
 
     # 统一图输出目录
-    PLOT_DIR = ROOT / "outputs" / "plots" / "m2m_egs"
+    PLOT_DIR = ROOT / "outputs" / "plots" / "m2m_auis"
     PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
     for DATASETNAME in DATASETS:
@@ -274,7 +292,7 @@ if __name__ == "__main__":
         PRED_DIR = ROOT / "outputs" / "pred_sims" / DATASETNAME
 
         # 图输出到统一目录
-        OUT_PNG = PLOT_DIR / f"M2M_EGS_curve_{DATASETNAME}.png"
+        OUT_PNG = PLOT_DIR / f"AUIS_curve_{DATASETNAME}.png"
 
         print(f"\n=== Evaluating dataset: {DATASETNAME} ===")
         evaluate_pred_folder(GT_PATH, PRED_DIR, OUT_PNG)

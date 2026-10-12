@@ -1,3 +1,9 @@
+# 文件作用：把读图、算法训练、节点分组和评分接起来，比较几种分组办法。
+# 数据来源：main() 读取 .pt 的图与训练节点对，以及实体 JSON 中的真实分组答案 gt。
+# 核心依赖：--base PARROT 时调用 PlanetAlign/m2m/base.py 的 train_base_S()/arbitrate_sharpen()，再调用 PlanetAlign/m2m/quotient.py 的 evaluate_quotient_blind()。
+# 结果去向：main() 将评分和过程记录写 JSON；返回到入口的原预测 pred 没有写入这个结果文件。
+# 阅读建议：按 CODE_MAP.md 找 main() 中的 Dataset、args.base 分支和 quotient(full)；其他选项见 CODE_MAP_DETAILS.md。
+
 """Head-to-head M2M readout comparison over the SAME trained aligner.
 
 Trains JOENA once per dataset, freezes its similarity matrix ``S``, then scores
@@ -34,16 +40,18 @@ import torch
 
 from PlanetAlign.algorithms import JOENA
 from PlanetAlign.data import Dataset
-from PlanetAlign.m2m_blind import evaluate_blind, discover_groups_by_profile, decode_entity_map
+from PlanetAlign.m2m.blind import evaluate_blind, discover_groups_by_profile, decode_entity_map
 from PlanetAlign.m2m import align_prediction_to_ground_truth, use_full_anchor_supervision
-from PlanetAlign.m2m_quotient import evaluate_quotient_blind
+from PlanetAlign.m2m.quotient import evaluate_quotient_blind
 from PlanetAlign.metrics import many_to_many_scores
 from PlanetAlign.utils import get_anchor_pairs
 
 GIDS = [0, 1]
-M2M_METRICS = ["ACS", "MSF1", "MicroF1", "M2M-SGS", "M2M-EGS"]
+M2M_METRICS = ["Macro Set-F1", "Micro Set-F1", "AUIS", "AUCS"]
 
 
+# 核心思路：调用 PlanetAlign/m2m/blind.py → discover_groups_by_profile() 固定阈值分组，再 decode_entity_map() 贪心匹配。
+# 输出结果：经实体编号适配与指标计算，返回分数字典和两侧组数给 main()。
 def profile_greedy_scores(S, gt, g_src, g_tgt, tau=0.1):
     """The earliest readout: fixed-tau profile union-find + greedy match."""
     src_groups = discover_groups_by_profile(S, g_src, tau=tau)
@@ -54,6 +62,9 @@ def profile_greedy_scores(S, gt, g_src, g_tgt, tau=0.1):
     return scores, (len(src_groups), len(tgt_groups))
 
 
+# 流程位置：脚本入口；--base PARROT 选择本仓库简明导读的路线，不指定 --base 时默认走 JOENA。
+# 核心思路：加载数据，取得节点分数表 S，再把同一张表交给各分组评估函数比较。
+# 输出结果：各办法的分数、耗时和过程记录写 JSON；gt 传给评分包装函数，不传给 PARROT 或 quotient_decode()。
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--root", type=Path, default=Path("data/m2m_overlap_0.05"))
@@ -83,12 +94,15 @@ def main() -> int:
         # M2M anchor_links already IS the original 20% train split; entity GT is
         # built from the original test split (disjoint, verified all datasets).
         use_full_anchor_supervision(ds)
+    # 数据来源：gt 是 JSON 中的真实分组，提前读入供评分；PARROT 和 quotient_decode() 不接收它。
     gt = json.load(open(args.root / f"{args.dataset}_gt_many2many.json"))["entities"]
     g_src, g_tgt = ds.pyg_graphs[GIDS[0]], ds.pyg_graphs[GIDS[1]]
     use_attr = all(g.x is not None for g in (g_src, g_tgt))
     print(f"dataset={args.dataset} nodes={[g_src.num_nodes, g_tgt.num_nodes]} "
           f"entities={len(gt)} use_attr={use_attr}")
 
+    # 功能：按模型名创建 JOENA 或 PlanetAlign/m2m/contrastive.py → JOENAPC，复用缓存或训练。
+    # 输出结果：CPU float32 的 S 交回 main()，可直接解码或参与三个分支的矩阵平均。
     def get_S(model_name: str) -> torch.Tensor:
         # "joena-pc-gm" (an auto branch) forces group marginals at the frozen
         # rho; plain "joena-pc" follows the CLI flags (defaults = frozen recipe).
@@ -109,7 +123,7 @@ def main() -> int:
         if model_name == "joena":
             aligner = JOENA(alpha=0.7).to("cpu")
         else:
-            from PlanetAlign.m2m_contrastive import JOENAPC
+            from PlanetAlign.m2m.contrastive import JOENAPC
             aligner = JOENAPC(alpha=0.7,
                               lambda_unif=args.pc_lambda_unif,
                               lambda_align=args.pc_lambda_align,
@@ -134,7 +148,7 @@ def main() -> int:
         # weak-attribute datasets; docs §5.11.1), then pick raw vs softmax(S/T)
         # blind on the training anchors. The base becomes a first-class arbitrated
         # hyperparameter of the representation, not a per-dataset hand-pick.
-        from PlanetAlign.m2m_base import train_base_S, arbitrate_sharpen
+        from PlanetAlign.m2m.base import train_base_S, arbitrate_sharpen
         model_tag = f"_base-{args.base}"
         fa = "" if args.no_full_anchors else "_fa"
         cache = Path("logs/m2m_diag/S_cache") / f"{args.dataset}_base-{args.base}_e-full_s{args.seed}{fa}.pt"
@@ -165,7 +179,7 @@ def main() -> int:
         # anchors then genuinely cannot distinguish them). < 20 anchors ->
         # conservative default = joena (no validated blind signal there;
         # measured: 6 anchors mis-rank, and train-anchor MRR anti-correlates).
-        from PlanetAlign.m2m_quotient import entity_anchor_agreement
+        from PlanetAlign.m2m.quotient import entity_anchor_agreement
         BRANCHES = ["joena", "joena-pc", "joena-pc-gm"]   # refined last
         branches = {}
         for m in BRANCHES:
@@ -175,7 +189,7 @@ def main() -> int:
                 return_predictions=True, use_attr=use_attr, anchors=anchors)
             corr, raw = entity_anchor_agreement(pred, anchors, int(g_tgt.num_nodes))
             branches[m] = (S_m, sc, corr, raw)
-            print(f"  [branch {m:<12}] MicroF1={sc['MicroF1']:.4f} "
+            print(f"  [branch {m:<12}] Micro Set-F1={sc['Micro Set-F1']:.4f} "
                   f"anchor corrected={corr:.4f} raw={raw:.4f}")
         if anchors.shape[0] < 20:
             chosen = "joena"
@@ -201,11 +215,13 @@ def main() -> int:
 
     records: List[Dict[str, Any]] = []
 
+    # 功能：将当前解码方式的指标、额外信息和耗时追加到 records，并打印主要分数。
     def add(name: str, scores: Dict[str, float], extra: Dict[str, Any] = None, dt: float = 0.0):
         rec = {"readout": name, **scores, "decode_s": round(dt, 2), **(extra or {})}
         records.append(rec)
-        print(f"  {name:<28} MicroF1={scores['MicroF1']:.4f} MSF1={scores['MSF1']:.4f} "
-              f"ACS={scores['ACS']:.4f} ({dt:.1f}s)")
+        print(f"  {name:<28} Micro Set-F1={scores['Micro Set-F1']:.4f} "
+              f"Macro Set-F1={scores['Macro Set-F1']:.4f} "
+              f"AUIS={scores['AUIS']:.4f} AUCS={scores['AUCS']:.4f} ({dt:.1f}s)")
 
     # 1) attribute-cohesion blind (the diagnostic's default readout)
     t = time.perf_counter()

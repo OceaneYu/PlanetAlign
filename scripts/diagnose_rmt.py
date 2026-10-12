@@ -1,3 +1,7 @@
+# 文件作用：分析节点矩阵 S 的谱、噪声与组内/组间轮廓区别，帮助解释解码是否有可用信号。
+# 数据来源：get_S() 加载或训练 PlanetAlign/algorithms/joena/main.py → JOENA，并读取实体 JSON 作诊断标签。
+# 结果去向：main() 保存谱统计和不同矩阵处理的轮廓诊断，不产出正式实体预测。
+
 """Random-matrix-theory diagnosis of the alignment matrix S.
 
 Questions this script answers with numbers (GT is used for *diagnosis only*,
@@ -39,6 +43,7 @@ CACHE = Path("logs/m2m_diag/S_cache")
 
 
 # ---------------------------------------------------------------------------
+# 功能：加载 Dataset 并读取已有矩阵缓存，缺失时训练 JOENA；返回 S 与 Dataset。
 def get_S(root: Path, name: str, epochs: int, seed: int, train_ratio: float) -> Tuple[torch.Tensor, Dataset]:
     ds = Dataset(root=root, name=name, train_ratio=train_ratio, seed=seed)
     CACHE.mkdir(parents=True, exist_ok=True)
@@ -60,6 +65,7 @@ def get_S(root: Path, name: str, epochs: int, seed: int, train_ratio: float) -> 
 
 
 # ---------------------------------------------------------------------------
+# 功能：按矩阵长宽比和奇异值中位数估计信号筛选阈值，供 spectrum_report() 使用。
 def gavish_donoho_threshold(svals: torch.Tensor, m: int, n: int) -> float:
     """Optimal hard threshold for singular values, unknown noise (GD 2014).
 
@@ -71,6 +77,7 @@ def gavish_donoho_threshold(svals: torch.Tensor, m: int, n: int) -> float:
     return float(omega * svals.median())
 
 
+# 功能：对 S 做奇异值分解，记录阈值以上成分数、有效秩和信号能量。
 def spectrum_report(S: torch.Tensor) -> Dict[str, float]:
     m, n = S.shape
     svals = torch.linalg.svdvals(S)
@@ -84,6 +91,7 @@ def spectrum_report(S: torch.Tensor) -> Dict[str, float]:
             "stable_rank": round(stable_rank, 1), "signal_energy": round(signal_energy, 4)}
 
 
+# 功能：仅保留指定数量的奇异值成分，重构矩阵供诊断比较。
 def denoise(S: torch.Tensor, rank: int) -> torch.Tensor:
     U, sv, Vh = torch.linalg.svd(S, full_matrices=False)
     r = max(1, min(rank, sv.shape[0]))
@@ -125,6 +133,7 @@ def rank_auc(pos: torch.Tensor, neg: torch.Tensor) -> float:
     return float(auc)
 
 
+# 功能：用真实组标记相邻节点对，比较组内、跨组与随机对的轮廓相似度。
 def profile_separation(P: torch.Tensor, graph, entity_sets: List[set], num_null: int = 20000,
                        seed: int = 0) -> Dict[str, float]:
     """Within/cross/null cosine stats for one profile matrix (GT for labels only)."""
@@ -155,6 +164,7 @@ def profile_separation(P: torch.Tensor, graph, entity_sets: List[set], num_null:
 
 
 # ---------------------------------------------------------------------------
+# 功能：取得固定 S，比较原矩阵、低秩重构和结构传播等诊断，并保存 JSON。
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--epochs", type=int, default=10)

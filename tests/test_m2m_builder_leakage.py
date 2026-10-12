@@ -1,3 +1,7 @@
+# 文件作用：验证重复锚点和重叠成员都不能把训练节点带入真实评估实体。
+# 核心依赖：PlanetAlign/utils/many2many_builder.py → build_many_to_many_benchmark()；样例在本文件构造，不需完整基准。
+# 阅读建议：先读测试类的准备数据和对应断言，可用 python -m unittest discover -s tests 运行。
+
 """Regression test for the flickr-lastfm train/test leakage class.
 
 Original datasets may carry duplicate anchor rows (flickr-lastfm holds the
@@ -30,7 +34,9 @@ def _stub_dataset(train_pairs, test_pairs, n1=12, n2=12):
     )
 
 
+# 功能：用手工 train_data/test_data 重现节点冲突并检查构建器排除结果。
 class BuilderLeakageTest(unittest.TestCase):
+    # 功能：同时制造完整锚点重复和单侧节点重复，检查所有实体与训练节点隔离。
     def test_duplicated_anchor_pair_cannot_leak_into_entities(self):
         # Pair (5, 6) is duplicated across the split: one copy is training
         # supervision, one copy lands in test. Node 3 additionally collides on
@@ -50,6 +56,7 @@ class BuilderLeakageTest(unittest.TestCase):
         self.assertEqual(bench.metadata["dropped_train_collisions"], 2)
         self.assertEqual(bench.metadata["num_entities"], 4)
 
+    # 功能：开启重叠机制后再检查实体成员，防止后处理重新引入训练节点。
     def test_overlap_insertion_cannot_reintroduce_anchor_nodes(self):
         ds = _stub_dataset(
             train_pairs=[[5, 6]],

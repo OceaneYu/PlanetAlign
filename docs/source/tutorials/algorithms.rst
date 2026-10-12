@@ -44,6 +44,30 @@ Here’s an example of running the ``FINAL`` algorithm on the ``Douban`` dataset
 
     All built-in models work out-of-the-box with datasets derived from :class:`BaseData` and :class:`Dataset` classes of PLANETALIGN.
 
+Using GADL
+----------
+
+``GADL`` is an unsupervised, one-to-one graph alignment method independently
+implemented from the mathematical definition in the GADL paper.  It requires
+both graphs to provide node attributes with the same feature dimension.
+
+.. code-block:: python
+
+    from PlanetAlign.algorithms import GADL
+    from PlanetAlign.datasets import Douban
+
+    data = Douban(root="data")
+    model = GADL(hidden_dim=512, spectral_rank=300).to("cpu")
+    model.train(data, gids=[0, 1], use_attr=True, total_epochs=100)
+    result = model.test(data, gids=[0, 1])
+
+After training, ``model.S`` is the dense cosine-similarity matrix before any
+greedy or Hungarian assignment; larger entries indicate stronger matches.
+The first implementation uses dense graph reconstruction, with quadratic
+``O(n^2)`` time and memory per graph.  Constructing the final cross-graph
+similarity costs ``O(n_src * n_tgt)`` memory and pairwise work.  It does not
+include a compatibility mode for the external reference implementation.
+
 Customizing NA Algorithms
 --------------------------
 

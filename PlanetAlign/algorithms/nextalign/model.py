@@ -1,7 +1,12 @@
+# 文件作用：定义关系图卷积、注意力融合与对齐/上下文训练目标。
+# 数据来源：PlanetAlign/algorithms/nextalign/main.py → NeXtAlign.train() 创建模型并传入图特征或训练样本。
+# 结果去向：前向计算返回嵌入或损失，交回训练入口评估与反向传播。
+
 import torch.nn as nn
 import torch
 
 
+# 功能：融合锚点位置、one-hot 与可选属性，学习合并图节点表示。
 class Model(nn.Module):
     def __init__(self, num_nodes, out_features, anchor_nodes, distance='inner', num_anchors=None, num_attrs=0):
         """
@@ -36,6 +41,7 @@ class Model(nn.Module):
         self.loss_func1 = nn.BCEWithLogitsLoss()
         self.loss_func2 = nn.BCEWithLogitsLoss()
 
+    # 功能：分别编码输入通道，通过注意力融合，返回合并图节点嵌入。
     def forward(self, edges, x, etype):
         """
         Forward pass of the whole model.
@@ -82,6 +88,7 @@ class Model(nn.Module):
 
         return out_x
 
+    # 功能：比较节点向量的不同子空间组合，返回节点对分数。
     def score(self, emb1, emb2, graph_name):
         """
         Scoring function.
@@ -113,6 +120,7 @@ class Model(nn.Module):
 
         return predict_scores
 
+    # 功能：对锚点、正上下文与负例构造两个训练目标，返回对齐和上下文损失。
     def loss(self, input_embs):
         """
         Loss functions for alignment.
@@ -163,6 +171,7 @@ class Model(nn.Module):
         return loss1, loss2
 
 
+# 功能：按边的关系类型选择权重，聚合合并图中的不同来源边。
 class RelGCN(nn.Module):
     def __init__(self, in_feat, out_feat, num_rels, bias=True, activation=None, self_loop=True, dropout=0.0, alpha=0.5,
                  param=True):
@@ -189,6 +198,7 @@ class RelGCN(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
 
+    # 功能：生成边消息、按目标节点累加并加入自环表示，返回节点表示。
     def forward(self, edge_index, x, edge_type):
         """
         Forward pass of the RelGCN layer without DGL.
@@ -251,6 +261,7 @@ class RelGCN(nn.Module):
 
         return node_repr
 
+    # 功能：按 edge_type 取权重，将源节点向量转换为边上传播的消息。
     def message(self, x_j, edge_type):
         """
         Message passing function without DGL.

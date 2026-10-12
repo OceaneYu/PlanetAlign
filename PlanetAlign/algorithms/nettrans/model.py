@@ -1,9 +1,14 @@
+# 文件作用：定义多层图压缩、跨图信息交换和还原网络。
+# 数据来源：PlanetAlign/algorithms/nettrans/main.py → NetTrans.train() 创建模型并传入图特征或训练样本。
+# 结果去向：前向计算返回嵌入或损失，交回训练入口评估与反向传播。
+
 import torch.nn as nn
 from torch_geometric.nn.conv import GCNConv, GraphConv, GATConv, APPNP
 from torch_geometric.utils.repeat import repeat
 from .functions import *
 
 
+# 功能：组织下采样层、跨图层和还原层，并提供对齐/重构损失。
 class NetTransModel(nn.Module):
     def __init__(self,
                  in_dim,
@@ -56,6 +61,8 @@ class NetTransModel(nn.Module):
         self.MLP2.reset_parameters()
         self.last_layer.reset_parameters()
 
+    # 核心思路：逐层 TransPool() 压缩图，利用锚点关联两图的组，再由 TransUnPool() 还原节点表示。
+    # 输出结果：返回两侧表示、组信息、分配矩阵及属性重构结果给训练循环。
     def forward(self, x, edge_index, edge_weight, y, edge_index_y, edge_weight_y, anchor_links, temperature):
         n1, n2 = x.shape[0], y.shape[0]
         batch = edge_index.new_zeros(x.shape[0])
@@ -112,6 +119,7 @@ class NetTransModel(nn.Module):
         score = -torch.sum(torch.abs(emb1 - emb2), dim=1).reshape((-1, 1))
         return score
 
+    # 功能：用真实邻接与负例节点对计算连接预测损失。
     def adj_loss(self, anchor1_emb, context_pos1_emb, context_neg1_emb):
         num_instance1 = anchor1_emb.shape[0]
         num_instance2 = context_neg1_emb.shape[0]
@@ -127,6 +135,7 @@ class NetTransModel(nn.Module):
         loss = self.adj_loss_func(terms1, labels1)
         return loss
 
+    # 功能：比较正对应与负例的向量距离，以 margin 排名目标训练节点对齐。
     def align_loss(self, pos_emb1, pos_emb2, neg_emb1, neg_emb2):
         num_instance1 = pos_emb1.shape[0]
         num_instance2 = neg_emb1.shape[0]
@@ -141,10 +150,12 @@ class NetTransModel(nn.Module):
                 self.align_loss_func(term2.repeat(1, N_negs).reshape(-1, 1), term4, torch.ones_like(term4))
         return loss
 
+    # 功能：以均方误差比较原始属性与重构属性。
     def recon_attr_loss(self, recon_y, y):
         return self.mse_loss(y, recon_y)
 
 
+# 功能：沿节点与组之间的连接传播信息，将组表示还原到较细的图。
 class TransUnPool(torch.nn.Module):
     def __init__(self, in_channels, out_channels, non_linearity=torch.tanh):
         super(TransUnPool, self).__init__()
@@ -159,6 +170,7 @@ class TransUnPool(torch.nn.Module):
         self.BiConv.reset_parameters()
         self.UniConv.reset_parameters()
 
+    # 输出结果：还原后的特征、边和权重交回 NetTransModel.forward()。
     def forward(self, sup_x, y, edge_index, edge_weight, assign_index, assign_weight):
         num_nodes1 = y.shape[0]
         num_nodes2 = sup_x.shape[0]
@@ -169,6 +181,7 @@ class TransUnPool(torch.nn.Module):
         return x, edge_index, edge_weight
 
 
+# 功能：在两图的压缩表示之间执行双向跨图信息传播。
 class LastLayer(torch.nn.Module):
     def __init__(self, in_channels1, out_channels, bias=False):
         super(LastLayer, self).__init__()
@@ -182,6 +195,7 @@ class LastLayer(torch.nn.Module):
         self.BiConv1.reset_parameters()
         self.BiConv2.reset_parameters()
 
+    # 输出结果：跨图传播后的表示交回主网络的还原流程。
     def forward(self, sup_x, y, assign_index, assign_weight, anchor_links, anchor_weight, num_nodes):
         # assign_index is of bipartite graph, edge_index is of unipartite graph
         # sup_x is embedding of supernodes, x0 is the node attribute of target network
@@ -195,6 +209,7 @@ class LastLayer(torch.nn.Module):
         return z
 
 
+# 功能：选择代表节点并学习其他节点到代表节点的带权分配，实现图压缩。
 class TransPool(torch.nn.Module):
     def __init__(self, in_channels, out_channels, ratio=0.85, non_linearity=torch.relu):
         super(TransPool, self).__init__()
@@ -213,6 +228,8 @@ class TransPool(torch.nn.Module):
         self.score_layer.reset_parameters()
         self.supAggr_layer.reset_parameters()
 
+    # 核心思路：打分选代表节点，构造与补足候选分配，用稀疏归一化采样生成压缩图。
+    # 输出结果：压缩特征、图边、代表节点与分配信息交回 NetTransModel.forward()。
     def forward(self, x, edge_index, temperature, edge_weight, batch, layer_agg='avg'):
         num_nodes = x.shape[0]
         nodes = torch.arange(num_nodes, dtype=torch.long, device=edge_index.device)
@@ -270,6 +287,7 @@ class TransPool(torch.nn.Module):
 
         return x, out_edge_index, out_edge_weight, batch, super_nodes, assign_index, assign_weight
 
+    # 功能：按每张图的节点数量与比例选取最高分节点，返回代表节点索引。
     @staticmethod
     def topk(x, ratio, batch):
         # num_nodes = scatter_add(batch.new_ones(x.size(0)), batch, dim=0)
@@ -303,6 +321,7 @@ class TransPool(torch.nn.Module):
         return perm
 
 
+# 功能：用 APPNP 传播与可学习权重更新压缩图特征。
 class GCN(torch.nn.Module):
     def __init__(self, in_channels, out_channels, k=10, alpha=0.5):
         super(GCN, self).__init__()
@@ -321,6 +340,7 @@ class GCN(torch.nn.Module):
     def reset_parameters(self):
         self.conv.reset_parameters()
 
+    # 输出结果：传播后特征交给 NetTransModel 的首层处理。
     def forward(self, x, edge_index, edge_weight):
         x = x @ self.weight
         x = self.conv(x, edge_index, edge_weight)
