@@ -26,10 +26,9 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "planeta
 import torch
 
 from PlanetAlign.data import Dataset
-from PlanetAlign.m2m import use_full_anchor_supervision
+from PlanetAlign.m2m import evaluate_predictions, use_full_anchor_supervision
 from PlanetAlign.m2m.base import train_base_S, arbitrate_sharpen
-from PlanetAlign.m2m.quotient import (entity_anchor_agreement, evaluate_quotient_blind,
-                                      quotient_decode)
+from PlanetAlign.m2m.quotient import entity_anchor_agreement, quotient_decode
 from PlanetAlign.utils import get_anchor_pairs
 
 GIDS = (0, 1)
@@ -55,8 +54,7 @@ def score(S, g_src, g_tgt, anchors, gt, has_attr):
     S_best, T, _ = arbitrate_sharpen(S, g_src, g_tgt, anchors, use_attr=has_attr)
     pred, _ = quotient_decode(S_best, g_src, g_tgt, use_attr=has_attr, anchors=anchors)
     corrected, raw = entity_anchor_agreement(pred, anchors, int(g_tgt.num_nodes))
-    mf1 = evaluate_quotient_blind(S_best, gt, g_src, g_tgt, metrics=["MicroF1"],
-                                  use_attr=has_attr, anchors=anchors)["MicroF1"]
+    mf1 = evaluate_predictions(gt, pred, metrics=["MicroF1"])["MicroF1"]
     return corrected, mf1, T
 
 

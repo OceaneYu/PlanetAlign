@@ -1,7 +1,7 @@
 # 文件作用：把读图、算法训练、节点分组和评分接起来，比较几种分组办法。
 # 数据来源：main() 读取 .pt 的图与训练节点对，以及实体 JSON 中的真实分组答案 gt。
-# 核心依赖：--base PARROT 时调用 PlanetAlign/m2m/base.py 的 train_base_S()/arbitrate_sharpen()，再调用 PlanetAlign/m2m/quotient.py 的 evaluate_quotient_blind()。
-# 结果去向：main() 将评分和过程记录写 JSON；返回到入口的原预测 pred 没有写入这个结果文件。
+# 核心依赖：--base PARROT 时先 train_base_S()/arbitrate_sharpen()，再调用 PlanetAlign/m2m/quotient.py → quotient_decode() 预测。
+# 结果去向：PlanetAlign/m2m/core.py → evaluate_predictions() 用 gt 评分，main() 写 scores、info 到 JSON，不保存 pred。
 # 阅读建议：按 CODE_MAP.md 找 main() 中的 Dataset、args.base 分支和 quotient(full)；其他选项见 CODE_MAP_DETAILS.md。
 
 """Head-to-head M2M readout comparison over the SAME trained aligner.
@@ -41,8 +41,8 @@ import torch
 from PlanetAlign.algorithms import JOENA
 from PlanetAlign.data import Dataset
 from PlanetAlign.m2m.blind import evaluate_blind, discover_groups_by_profile, decode_entity_map
-from PlanetAlign.m2m import align_prediction_to_ground_truth, use_full_anchor_supervision
-from PlanetAlign.m2m.quotient import evaluate_quotient_blind
+from PlanetAlign.m2m import align_prediction_to_ground_truth, evaluate_predictions, use_full_anchor_supervision
+from PlanetAlign.m2m.quotient import quotient_decode
 from PlanetAlign.metrics import many_to_many_scores
 from PlanetAlign.utils import get_anchor_pairs
 
@@ -62,9 +62,9 @@ def profile_greedy_scores(S, gt, g_src, g_tgt, tau=0.1):
     return scores, (len(src_groups), len(tgt_groups))
 
 
-# 流程位置：脚本入口；--base PARROT 选择本仓库简明导读的路线，不指定 --base 时默认走 JOENA。
-# 核心思路：加载数据，取得节点分数表 S，再把同一张表交给各分组评估函数比较。
-# 输出结果：各办法的分数、耗时和过程记录写 JSON；gt 传给评分包装函数，不传给 PARROT 或 quotient_decode()。
+# 功能：加载数据、取得 S，比较分组办法，最后保存评分和过程记录；--base PARROT 选择主导读路线。
+# 输入输出：图和训练锚点用于训练与预测，gt 只用于评分；结果 JSON 格式由 add() 和末尾写入代码决定。
+# 调用关系：预测调用 PlanetAlign/m2m/quotient.py → quotient_decode()；评分调用 PlanetAlign/m2m/core.py → evaluate_predictions()。
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--root", type=Path, default=Path("data/m2m_overlap_0.05"))
@@ -140,6 +140,7 @@ def main() -> int:
         print(f"[{model_name}] trained in {time.perf_counter()-t0:.1f}s; cached")
         return s_
 
+    # 训练锚点：允许训练和预测使用的已知节点对，来自 ds.train_data，不是 gt。
     anchors = get_anchor_pairs(ds.train_data, GIDS[0], GIDS[1])
     model_tag = "" if args.model == "joena" else f"_{args.model.replace('-', '_')}"
 
@@ -184,12 +185,13 @@ def main() -> int:
         branches = {}
         for m in BRANCHES:
             S_m = get_S(m)
-            sc, pred, info = evaluate_quotient_blind(
-                S_m, gt, g_src, g_tgt, metrics=M2M_METRICS,
-                return_predictions=True, use_attr=use_attr, anchors=anchors)
+            # 预测：只传矩阵、图和训练锚点，不传真实答案。
+            pred, info = quotient_decode(S_m, g_src, g_tgt, use_attr=use_attr, anchors=anchors)
+            # 评估：gt 只参与评分，分支选择仍只看下方的训练锚点一致性。
+            scores = evaluate_predictions(gt, pred, metrics=M2M_METRICS)
             corr, raw = entity_anchor_agreement(pred, anchors, int(g_tgt.num_nodes))
-            branches[m] = (S_m, sc, corr, raw)
-            print(f"  [branch {m:<12}] Micro Set-F1={sc['Micro Set-F1']:.4f} "
+            branches[m] = (S_m, scores, corr, raw)
+            print(f"  [branch {m:<12}] Micro Set-F1={scores['Micro Set-F1']:.4f} "
                   f"anchor corrected={corr:.4f} raw={raw:.4f}")
         if anchors.shape[0] < 20:
             chosen = "joena"
@@ -233,12 +235,13 @@ def main() -> int:
     sc, counts = profile_greedy_scores(S, gt, g_src, g_tgt, tau=0.1)
     add("profile-greedy(tau=0.1)", sc, {"groups": counts}, time.perf_counter() - t)
 
-    # 3) full quotient decode (anchor-arbitrated evidence selection)
+    # 3) QuotientDecode 主线：先预测，再评估；计时仍覆盖两步。
     t = time.perf_counter()
-    sc, pred, info = evaluate_quotient_blind(S, gt, g_src, g_tgt, metrics=M2M_METRICS,
-                                             return_predictions=True, use_attr=use_attr,
-                                             anchors=anchors)
-    add("quotient(full)", sc, {"info": info}, time.perf_counter() - t)
+    # 预测阶段：PlanetAlign/m2m/quotient.py → quotient_decode()；不使用真实答案 gt。
+    pred, info = quotient_decode(S, g_src, g_tgt, use_attr=use_attr, anchors=anchors)
+    # 评估阶段：PlanetAlign/m2m/core.py → evaluate_predictions()；用 gt 对应编号并评分。
+    scores = evaluate_predictions(gt, pred, metrics=M2M_METRICS)
+    add("quotient(full)", scores, {"info": info}, time.perf_counter() - t)
 
     if not args.skip_ablations:
         for name, kw in [
@@ -254,9 +257,10 @@ def main() -> int:
             ("quotient + fgw(a.1)",     dict(matcher="fgw", fgw_alpha=0.1, anchors=anchors)),
         ]:
             t = time.perf_counter()
-            sc, _, info = evaluate_quotient_blind(S, gt, g_src, g_tgt, metrics=M2M_METRICS,
-                                                  return_predictions=True, use_attr=use_attr, **kw)
-            add(name, sc, {"info": info}, time.perf_counter() - t)
+            # 每个对照配置也遵循先预测、后评分的顺序；参数与主线保持原来的设置。
+            pred, info = quotient_decode(S, g_src, g_tgt, use_attr=use_attr, **kw)
+            scores = evaluate_predictions(gt, pred, metrics=M2M_METRICS)
+            add(name, scores, {"info": info}, time.perf_counter() - t)
 
     out = args.out or Path(f"logs/m2m_diag/quotient_compare_{args.dataset}{model_tag}.json")
     out.parent.mkdir(parents=True, exist_ok=True)

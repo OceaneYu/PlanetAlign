@@ -1,5 +1,5 @@
 # 文件作用：统一实体字典格式，提供数据读写、训练锚点恢复和预测评分的辅助接口。
-# 数据来源：基准接口读 .pt/JSON；PlanetAlign/m2m/quotient.py → evaluate_quotient_blind() 将真实与预测分组传给编号对应函数。
+# 数据来源：基准接口读 .pt/JSON；实验入口将真实与预测分组传给 evaluate_predictions() 评分。
 # 结果去向：align_prediction_to_ground_truth() 返回编号对应后的预测，由调用方传给 PlanetAlign/metrics/many_to_many.py → many_to_many_scores()。
 # 阅读建议：主线开始看 use_full_anchor_supervision()，评分时看 align_prediction_to_ground_truth()；它们发生在不同阶段。
 
@@ -270,7 +270,7 @@ def _entity_nodes(item: Mapping[str, Iterable[int]], sides: Sequence[str]) -> se
 
 
 # 流程位置：预测已完成后，为评分对应真实组和预测组的编号，不重新给节点分组。
-# 输入来源：PlanetAlign/m2m/quotient.py → evaluate_quotient_blind() 等传入真实与预测实体字典。
+# 输入来源：evaluate_predictions() 等评分调用方传入真实与预测实体字典。
 # 核心思路：按共有成员多少排序，每个真实组与预测组至多对应一次；漏预测补空，额外预测保留。
 # 输出结果：对应编号后的预测交回调用方，再由 PlanetAlign/metrics/many_to_many.py → many_to_many_scores() 评分。
 def align_prediction_to_ground_truth(
@@ -328,8 +328,9 @@ def align_prediction_to_ground_truth(
     return aligned
 
 
-# 功能：规范化实体字典，按选项对应编号或补齐预测，再调用 many_to_many_scores()。
-# 输出结果：返回指标分数字典，供直接提交实体预测的算法使用。
+# 功能：只对已有预测评分，不生成预测；规范化实体后，按选项对应编号或补齐预测。
+# 输入输出：接收真实实体 gt_entities、预测实体 pred_entities 和指标选项，返回 scores 分数字典。
+# 调用关系：scripts/run_quotient_compare.py → main() 在预测后调用；内部交给 PlanetAlign/metrics/many_to_many.py → many_to_many_scores()。
 def evaluate_predictions(
     gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
     pred_entities: Mapping[str, Mapping[str, Iterable[int]]],

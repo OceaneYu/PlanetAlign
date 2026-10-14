@@ -83,7 +83,7 @@ QuotientDecode：
 核心实现：
 
 - `PlanetAlign/m2m/quotient.py::quotient_decode`
-- `PlanetAlign/m2m/quotient.py::evaluate_quotient_blind`
+- `PlanetAlign/m2m/core.py::evaluate_predictions`
 - `PlanetAlign/m2m/base.py::train_base_S`
 - `PlanetAlign/m2m/base.py::arbitrate_sharpen`
 
@@ -263,7 +263,7 @@ dataset.test_data = dataset._anchor_links[:0]
 - GT 实体数；
 - 根据测试 MicroF1 挑阈值、基座、温度或 matcher。
 
-`evaluate_quotient_blind` 先在完全不读取 GT 实体的情况下预测，再在评测阶段将预测实体 ID 与 GT 实体 ID 对齐并计算指标。实体 ID 对齐使用成员集合重叠，只是标签置换适配，不应被误写成预测算法的一部分。
+`quotient_decode` 不读取 GT 实体，返回预测后，`evaluate_predictions` 才将预测实体 ID 与 GT 实体 ID 对齐并计算指标。实体 ID 对齐使用成员集合重叠，只是标签置换适配，不应被误写成预测算法的一部分。
 
 ### 4.2 指标
 
@@ -470,9 +470,9 @@ JSON 多数没有同时记录：git SHA、数据哈希、manifest amendment、ro
 
 ### P1：接口和叙事不完整
 
-#### 9.4 FGW 接口未完整贯通
+#### 9.4 FGW 函数接口（已统一）
 
-`quotient_decode` 支持 `matcher="fgw"`，但 `JOENAQuotientDecode.__init__` 仍断言 matcher 只能是 `hungarian/greedy`，也没有暴露 `fgw_alpha`。FGW 当前主要通过函数级接口和实验脚本使用。
+`quotient_decode` 支持 `matcher="fgw"` 和 `fgw_alpha`；FGW 通过同一个预测函数与实验脚本使用，评分仍由 `evaluate_predictions` 完成。
 
 #### 9.5 SacchCere 未归类
 
@@ -486,9 +486,9 @@ JSON 多数没有同时记录：git SHA、数据哈希、manifest amendment、ro
 
 同一 `S` 内的分区证据和锐化温度仲裁有支持；跨 `S` 的基座/分支仲裁和 Hungarian/FGW matcher 仲裁都出现系统性失败。当前最终基座实际上是固定 PARROT，不是每次靠锚点安全选出。
 
-#### 9.8 公开wrapper与当前主系统脱节
+#### 9.8 主线接口（已简化）
 
-`JOENAQuotientDecode` 仍以 JOENA 为内置训练器；当前主系统需要手动组合 `train_base_S("PARROT")`、`arbitrate_sharpen` 和 `evaluate_quotient_blind`。可以考虑新增清晰的 `QuotientAlign`/`PARROTQuotientAlign` 公共入口，但应避免复制逻辑。
+当前主系统按顺序调用 `train_base_S("PARROT")`、`arbitrate_sharpen`、`quotient_decode` 和 `evaluate_predictions`。没有额外的组合函数或模型包装类，直接沿主程序阅读即可。
 
 ### P2：扩展性和科研完整性
 

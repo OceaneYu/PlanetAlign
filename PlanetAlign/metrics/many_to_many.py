@@ -1,5 +1,5 @@
 # 文件作用：比较真实与预测实体集合，返回各多对多指标的分数。
-# 数据来源：PlanetAlign/m2m/quotient.py → evaluate_quotient_blind() 在预测完成、实体编号对应后传入字典。
+# 数据来源：PlanetAlign/m2m/core.py → evaluate_predictions() 在编号对应后传入真实与预测实体字典。
 # 核心依赖：PlanetAlign/metrics/metrics_MSF1.py、PlanetAlign/metrics/metrics_Micro_SF1.py、PlanetAlign/metrics/metrics_AUIS.py、PlanetAlign/metrics/metrics_AUCS.py 的评分函数。
 # 阅读建议：先看 many_to_many_scores() 如何选指标和返回 scores，需要了解分数定义时再读具体指标。
 

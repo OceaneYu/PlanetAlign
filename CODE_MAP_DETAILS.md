@@ -99,9 +99,7 @@ python scripts/run_quotient_compare.py --root data/m2m_no_overlap --dataset ppi_
 
 ### 4.4 从节点分数预测实体
 
-`main() → PlanetAlign/m2m/quotient.py → evaluate_quotient_blind()`
-
-→ `quotient_decode(S, g_src, g_tgt, anchors=...)`
+`main() → PlanetAlign/m2m/quotient.py → quotient_decode(S, g_src, g_tgt, anchors=...)`
 
 `quotient_decode()` 先把 `S` 与 `S.T` 当成两侧匹配轮廓，依次：
 
@@ -115,7 +113,7 @@ python scripts/run_quotient_compare.py --root data/m2m_no_overlap --dataset ppi_
 
 ### 4.5 对齐编号、计算指标、保存结果
 
-`evaluate_quotient_blind()` 在预测完成后才调用：
+`main()` 得到 `pred` 和 `info` 后，单独调用 [PlanetAlign/m2m/core.py](PlanetAlign/m2m/core.py) → `evaluate_predictions(gt, pred)`；评分函数不执行解码，内部调用：
 
 [PlanetAlign/m2m/core.py](PlanetAlign/m2m/core.py) → `align_prediction_to_ground_truth(gt, pred)`
 
@@ -123,7 +121,9 @@ python scripts/run_quotient_compare.py --root data/m2m_no_overlap --dataset ppi_
 
 → `PlanetAlign/metrics/metrics_MSF1.py → macro_f1_score()`、`PlanetAlign/metrics/metrics_Micro_SF1.py → micro_f1_score()`、`PlanetAlign/metrics/metrics_AUIS.py → auis_score()`、`PlanetAlign/metrics/metrics_AUCS.py → aucs_score()`。
 
-编号适配器根据节点重叠将任意预测组编号对应到真实编号，这是**评估操作**，不是预测的一部分。Set-F1 比较各实体的节点集合；AUIS、AUCS 从不同角度评价分组。返回 `scores`，按选项还可返回原预测和 `info`。
+编号适配器根据节点重叠将任意预测组编号对应到真实编号，这是**评估操作**，不是预测的一部分。Set-F1 比较各实体的目标节点集合；AUIS、AUCS 从不同角度评价分组。`evaluate_predictions()` 只返回 `scores`。
+
+所有实验调用方统一先用 `quotient_decode()` 生成 `pred、info`，再用 `evaluate_predictions()` 规范化实体、对应编号并返回 `scores`；没有组合包装函数。
 
 入口 `main()` 的内部 `add()` 收集各解码方式的分数，最后写入 `--out` 指定的 JSON 或 `logs/m2m_diag/quotient_compare_*.json`。完整监督模式下入口打印的节点 Hits@1 使用训练锚点，是样本内诊断；正式多对多结果来自实体评分。
 
@@ -134,16 +134,16 @@ python scripts/run_quotient_compare.py --root data/m2m_no_overlap --dataset ppi_
 - `BaseModel.test()` 用 [PlanetAlign/metrics/hits.py](PlanetAlign/metrics/hits.py) → `hits_ks_scores()` 和 `PlanetAlign/metrics/mrr.py → mrr_score()` 评估节点排名；两者使用 `PlanetAlign/metrics/ranking.py → pairwise_ranks()` 处理同分情况。这是一对一评估链，与实体集合评分分开。
 - [PlanetAlign/logger/train_logger.py](PlanetAlign/logger/train_logger.py) → `TrainingLogger.log()` 接收算法训练循环提供的分数与时间；日志对象自身保存 CSV/JSON；`PlanetAlign/logger/output.py` 格式化和打印评分，`PlanetAlign/logger/plot.py` 绘制曲线。
 - `scripts/evaluate_gadl_*.py` 是 GADL 的专门复现与诊断入口，部分读取外部参考实现，不能当成通用主流程。[planetalign-baseline-skills/tools/baselinectl.py](planetalign-baseline-skills/tools/baselinectl.py) 管理隔离参考仓库与复现记录，也不在普通对齐运行链上。
-- `tests/` 用小图和固定输入检查接口、指标、数据隔离与算法行为；测试文件中的 `unittest` 类可以帮助理解边界情况。
+- `tests/` 用小图和固定输入检查接口、指标、数据隔离与算法行为；分布和 VS Code 运行步骤见 [tests/README.md](tests/README.md)。
 
 ## 6. 推荐阅读顺序
 
-1. **先看入口的骨架**：[scripts/run_quotient_compare.py](scripts/run_quotient_compare.py) → `main()`。先找到 `Dataset`、`args.base` 分支、`evaluate_quotient_blind()` 和输出 JSON，暂时跳过其他分支与消融循环。
+1. **先看入口的骨架**：[scripts/run_quotient_compare.py](scripts/run_quotient_compare.py) → `main()`。先找到 `Dataset`、`args.base` 分支、`quotient_decode()`、`evaluate_predictions()` 和输出 JSON，暂时跳过其他分支与消融循环。
 2. **理解输入格式**：[PlanetAlign/data/dataset.py](PlanetAlign/data/dataset.py) → `Dataset.load_dataset()`、`train_test_split()`，接着读 [PlanetAlign/m2m/core.py](PlanetAlign/m2m/core.py) → `use_full_anchor_supervision()` 和 `normalize_entity_map()`。先分清图、锚点与真实实体三种数据。
 3. **看算法如何被包装**：[PlanetAlign/m2m/base.py](PlanetAlign/m2m/base.py) → `train_base_S()`、`base_configs()`、`_extract_s()`。明确“算法 → S → 入口”的数据传递，再读 `arbitrate_sharpen()`。
 4. **只跟一个算法深入**：[PlanetAlign/algorithms/parrot.py](PlanetAlign/algorithms/parrot.py) → `PARROT.train()`、`get_transport_cost()`、`con_prox_pt_opt()`；需要时追到 `PlanetAlign/utils/rwr.py` 和 `PlanetAlign/utils/distance.py`。先理解矩阵用途，再研究优化公式。
 5. **理解节点如何变成实体**：[PlanetAlign/m2m/quotient.py](PlanetAlign/m2m/quotient.py) → `quotient_decode()`，沿调用依次看 `_candidate_partitions()`、`_select_partitions()`、`pool_columns()`、`quotient_scores()`、`hungarian_match()`。
-6. **理解预测如何被评分**：`evaluate_quotient_blind()` → `PlanetAlign/m2m/core.py → align_prediction_to_ground_truth()` → `PlanetAlign/metrics/many_to_many.py → many_to_many_scores()`。配合 [tests/test_m2m_interface.py](tests/test_m2m_interface.py)、[tests/test_many_to_many_metrics.py](tests/test_many_to_many_metrics.py) 的小例子阅读。
+6. **理解预测如何被评分**：`PlanetAlign/m2m/core.py → evaluate_predictions()` → `align_prediction_to_ground_truth()` → `PlanetAlign/metrics/many_to_many.py → many_to_many_scores()`。配合 [tests/test_m2m_interface.py](tests/test_m2m_interface.py)、[tests/test_many_to_many_metrics.py](tests/test_many_to_many_metrics.py) 的小例子阅读。
 7. **最后回看数据怎么生成**：[scripts/build_m2m_benchmarks.py](scripts/build_m2m_benchmarks.py) → `build_one()` → `PlanetAlign/utils/many2many_builder.py → build_many_to_many_benchmark()`、`ManyToManyBenchmark.save()`。这时更容易理解拆分节点、训练/评估隔离和重叠实体。
 
 ## 7. 怎样区分调用和传递

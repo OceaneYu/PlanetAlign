@@ -78,18 +78,18 @@ matching.
 Evaluate a node-level similarity matrix with the blind quotient decoder:
 
 ```python
-from PlanetAlign.m2m.quotient import evaluate_quotient_blind
+from PlanetAlign.m2m import evaluate_predictions
+from PlanetAlign.m2m.quotient import quotient_decode
 from PlanetAlign.utils import get_anchor_pairs
 
 anchors = get_anchor_pairs(dataset.train_data, 0, 1)
-scores, pred_entities, decode_info = evaluate_quotient_blind(
+pred_entities, decode_info = quotient_decode(
     S,
-    gt_entities,
     dataset.pyg_graphs[0],
     dataset.pyg_graphs[1],
     anchors=anchors,
-    return_predictions=True,
 )
+scores = evaluate_predictions(gt_entities, pred_entities)
 ```
 
 `gt_entities` is used only after `quotient_decode()` has produced its groups,
@@ -119,13 +119,13 @@ to the same blind decoder:
 
 ```python
 model.train(dataset=dataset, gids=[0, 1])
-scores = evaluate_quotient_blind(
+pred_entities, decode_info = quotient_decode(
     model.S,
-    gt_entities,
     dataset.pyg_graphs[0],
     dataset.pyg_graphs[1],
     anchors=anchors,
 )
+scores = evaluate_predictions(gt_entities, pred_entities)
 ```
 
 If a method directly predicts groups, evaluate that explicit entity map with

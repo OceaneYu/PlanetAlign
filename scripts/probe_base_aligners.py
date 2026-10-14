@@ -42,8 +42,8 @@ import torch
 
 import PlanetAlign
 from PlanetAlign.data import Dataset
-from PlanetAlign.m2m import use_full_anchor_supervision
-from PlanetAlign.m2m.quotient import evaluate_quotient_blind
+from PlanetAlign.m2m import evaluate_predictions, use_full_anchor_supervision
+from PlanetAlign.m2m.quotient import quotient_decode
 from PlanetAlign.metrics import hits_ks_scores
 from PlanetAlign.utils import get_anchor_pairs, pairwise_cosine_similarity
 
@@ -136,8 +136,8 @@ def main() -> int:
             ret = algo.train(dataset=ds, gids=GIDS, save_log=False, verbose=False, **kw)
             S = extract_s(algo, ret, cfg["mode"])
             hits = hits_ks_scores(S, test_pairs, ks=[1, 10], mode="mean")
-            sc = evaluate_quotient_blind(S, gt, g1, g2, metrics=["MicroF1"],
-                                         use_attr=has_attr, anchors=anchors)
+            pred, _ = quotient_decode(S, g1, g2, use_attr=has_attr, anchors=anchors)
+            sc = evaluate_predictions(gt, pred, metrics=["MicroF1"])
             CACHE.mkdir(parents=True, exist_ok=True)
             torch.save(S, CACHE / f"{args.dataset}_base-{name}_e-quick_s{args.seed}_fa.pt")
             print(f"{name:<11}{hits[1]:>8.4f}{hits[10]:>9.4f}{sc['MicroF1']:>15.4f}"

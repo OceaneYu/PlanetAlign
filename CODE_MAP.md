@@ -56,23 +56,23 @@ python scripts/run_quotient_compare.py --root data/m2m_no_overlap --dataset doub
 
 ## 5. 多对多解码：把“节点分数”变成“哪一组对应哪一组”
 
-- **打开哪里：** 入口调用 [PlanetAlign/m2m/quotient.py](PlanetAlign/m2m/quotient.py) 的 `evaluate_quotient_blind()`。先看它调用的 `quotient_decode(S, g_src, g_tgt, anchors=...)`，此时 `gt` 没有传进去。
+- **打开哪里：** 入口 `main()` 的 `quotient(full)` 段直接调用 [PlanetAlign/m2m/quotient.py](PlanetAlign/m2m/quotient.py) 的 `quotient_decode(S, g_src, g_tgt, anchors=...)`。这是预测阶段，不接收真实答案 `gt`。
 - **重点看什么：** `quotient_decode()` 用 `_candidate_partitions()` 提出可能同组的节点，用 `_select_partitions()` 选择两侧分组；`pool_columns()` 把另一侧的分数按组汇总，让下一轮判断更清楚。
 - **为什么要匹配组：** `quotient_scores()` 汇总组与组的分数，默认 `hungarian_match()` 在组之间安排不重复的匹配。每组可以有多个节点，因此得到的是节点层面的多对多对应。
-- **交给谁：** 返回 `pred`（如 `{"p0": {"src": [0,2], "tgt": [1,3]}}`）和 `info`（组数等过程记录），交回 `evaluate_quotient_blind()` 评分。
+- **交给谁：** 返回 `pred`（如 `{"p0": {"src": [0,2], "tgt": [1,3]}}`）和 `info`（组数等过程记录）给 `main()`；下一行才开始评估。
 
 ## 6. 评分和保存：最后才拿预测与答案比较
 
-- **打开哪里：** 继续读 `evaluate_quotient_blind()`：它把 `gt`、`pred` 交给 [PlanetAlign/m2m/core.py](PlanetAlign/m2m/core.py) 的 `align_prediction_to_ground_truth()`，因为预测组名 p0 等不一定与答案编号相同，需要先对应编号。
+- **打开哪里：** 入口接着调用 [PlanetAlign/m2m/core.py](PlanetAlign/m2m/core.py) 的 `evaluate_predictions(gt, pred)`。它只评分，内部用 `align_prediction_to_ground_truth()` 对应组编号，因为预测组名 p0 等不一定与答案编号相同。
 - **得到什么：** 编号适配后，调用 [PlanetAlign/metrics/many_to_many.py](PlanetAlign/metrics/many_to_many.py) 的 `many_to_many_scores()` 得到 `scores` 分数字典。Set-F1 检查预测目标节点集合是否漏了或多了；AUIS/AUCS 检查真实组的成员是否被分散。
-- **交给谁：** `scores`、原预测 `pred` 和 `info` 返回入口；`main()` 内的 `add()` 收集分数，最后写入 `--out` 或 `logs/m2m_diag/quotient_compare_*.json`。这里只保存评分与记录，`pred` 本身没有写入这个 JSON。
+- **交给谁：** `evaluate_predictions()` 只返回 `scores`；`pred`、`info` 已由预测阶段得到。`main()` 内的 `add()` 收集分数，最后写入 `--out` 或 `logs/m2m_diag/quotient_compare_*.json`，只保存评分与记录，不保存 `pred`。
 
 ## 建议这样读，第一遍不用钻进所有辅助函数
 
 1. 先看入口 `main()` 中的 `Dataset`、`args.base` 分支、`quotient(full)` 和 JSON 输出，认清各步在哪里发生。
 2. 按步骤 2 找 `Dataset.load_dataset()`、`use_full_anchor_supervision()`、`get_anchor_pairs()`，弄明白图和训练节点对从哪里来。
 3. 按步骤 3、4 找 `train_base_S()`、`PARROT.train()`、`arbitrate_sharpen()`，追踪节点分数怎样算出并交回入口。
-4. 按步骤 5、6 找 `evaluate_quotient_blind()`、`quotient_decode()`、`align_prediction_to_ground_truth()`、`many_to_many_scores()`，追踪分组预测怎样变成分数。
+4. 按步骤 5、6 找 `quotient_decode()`、`evaluate_predictions()`、`align_prediction_to_ground_truth()`、`many_to_many_scores()`，追踪预测怎样交给评分；真实答案只交给评分函数。
 5. 最后回看步骤 1 的 `build_one()`、`build_many_to_many_benchmark()`、`ManyToManyBenchmark.save()`，理解实验输入是怎么造出来的。
 
 其他路线先只记名字：JOENA、GADL 等负责提供节点分数；`scripts/run_m2m_experiments.py → main()` 负责批量比较。它们不改变本手册的阅读主线。

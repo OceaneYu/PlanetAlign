@@ -103,7 +103,7 @@ available. Submodule imports now use `PlanetAlign.m2m.base`,
 |---|---|
 | `m2m/core.py` | M2M interface: `EntityMap`, GT alignment, `use_full_anchor_supervision`, metric glue |
 | `m2m/blind.py` | Blind protocol: group discovery from `S` profiles, entity decode, blind evaluation |
-| `m2m/quotient.py` | **QuotientDecode** — the core M2M readout (all components above), plus `evaluate_quotient_blind` |
+| `m2m/quotient.py` | **QuotientDecode** — predicts entity groups with `quotient_decode`; score separately with `m2m/core.py → evaluate_predictions` |
 | `m2m/base.py` | Base-aligner axis: `train_base_S`, `arbitrate_sharpen`, `arbitrate_base` (PARROT and others) |
 | `m2m/contrastive.py` | `JOENAPC` — training-side fix: symmetry-broken inputs + uniformity contrastive + group-level Sinkhorn marginals |
 | `m2m/diagnostics.py` | GT-assisted diagnostic helpers, separate from blind prediction |
@@ -171,9 +171,9 @@ Programmatic use:
 ```python
 import json
 from PlanetAlign.data import Dataset
-from PlanetAlign.m2m import use_full_anchor_supervision
+from PlanetAlign.m2m import evaluate_predictions, use_full_anchor_supervision
 from PlanetAlign.m2m.base import train_base_S, arbitrate_sharpen
-from PlanetAlign.m2m.quotient import evaluate_quotient_blind
+from PlanetAlign.m2m.quotient import quotient_decode
 from PlanetAlign.utils import get_anchor_pairs
 
 ds = Dataset(root="data/m2m_no_overlap", name="ppi_m2m", train_ratio=0.2, seed=42)
@@ -184,8 +184,9 @@ gt = json.load(open("data/m2m_no_overlap/ppi_m2m_gt_many2many.json"))["entities"
 
 S = train_base_S("PARROT", ds, seed=42)                # base similarity
 S, T, _ = arbitrate_sharpen(S, g_src, g_tgt, anchors)  # blind sharpening choice
-scores = evaluate_quotient_blind(S, gt, g_src, g_tgt,   # blind M2M readout
-                                 metrics=["Macro Set-F1", "Micro Set-F1", "AUIS", "AUCS"], anchors=anchors)
+pred, info = quotient_decode(S, g_src, g_tgt, anchors=anchors)  # prediction: no gt
+scores = evaluate_predictions(gt, pred,              # evaluation: uses gt
+                              metrics=["Macro Set-F1", "Micro Set-F1", "AUIS", "AUCS"])
 print(scores)
 ```
 

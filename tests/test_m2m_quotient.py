@@ -4,11 +4,13 @@
 
 """Unit tests for PlanetAlign.m2m.quotient — one test per design claim."""
 
+import json
 import unittest
 
 import torch
 from torch_geometric.data import Data
 
+from PlanetAlign.m2m import evaluate_predictions
 from PlanetAlign.m2m.blind import discover_groups_by_profile
 from PlanetAlign.m2m.quotient import (
     evict_outliers,
@@ -214,6 +216,36 @@ class EndToEndToyTest(unittest.TestCase):
         self.assertEqual(tuple(T.shape), (2, 2))
         self.assertGreater(float(T[0, 0]), float(T[0, 1]))
         self.assertGreater(float(T[1, 1]), float(T[1, 0]))
+
+    # 功能：串起真实解码与评分，用固定小图检查预测内容、记录和默认/自选指标。
+    def test_prediction_and_scoring_recover_expected_entities(self):
+        gt = {"e0": {"src": [0, 1, 2], "tgt": [0]}, "e1": {"src": [3], "tgt": [1, 2]}}
+        anchors = torch.tensor([[0, 0], [3, 1]]).repeat(10, 1)
+        for metrics in (None, ["MicroF1", "Weighted-AUIS"]):
+            with self.subTest(metrics=metrics):
+                pred, info = quotient_decode(self.S, self.g1, self.g2, anchors=anchors)
+                scores = evaluate_predictions(gt, pred, metrics=metrics)
+                self.assertEqual(pred, {
+                    "p0": {"src": [0, 1, 2], "tgt": [0]},
+                    "p1": {"src": [3], "tgt": [1, 2]},
+                })
+                self.assertEqual(info["matched_groups"], 2)
+                expected_names = set(metrics or ("Macro Set-F1", "Micro Set-F1", "AUIS", "AUCS"))
+                self.assertEqual(scores, {name: 1.0 for name in expected_names})
+
+    # 功能：只替换评分用真实答案，确认预测分组与解码记录不变，评分则随答案改变。
+    def test_changing_ground_truth_does_not_change_prediction_or_info(self):
+        gt = {"e0": {"src": [0, 1, 2], "tgt": [0]}, "e1": {"src": [3], "tgt": [1, 2]}}
+        changed_gt = {"other": {"src": [3], "tgt": [0]}}
+        pred, info = quotient_decode(self.S, self.g1, self.g2)
+        prediction_before_scoring = json.dumps((pred, info), sort_keys=True)
+        scores = evaluate_predictions(gt, pred)
+        changed_scores = evaluate_predictions(changed_gt, pred)
+        self.assertNotEqual(scores, changed_scores)
+        self.assertEqual(json.dumps((pred, info), sort_keys=True), prediction_before_scoring)
+        # 再次预测仍得到同样的分组和记录，评分不会改动矩阵或图。
+        repeated_prediction = quotient_decode(self.S, self.g1, self.g2)
+        self.assertEqual(json.dumps(repeated_prediction, sort_keys=True), prediction_before_scoring)
 
 
 if __name__ == "__main__":

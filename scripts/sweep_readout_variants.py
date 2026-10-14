@@ -1,6 +1,6 @@
 # 文件作用：在相同缓存矩阵上比较组评分、邻居一致性与异常成员剔除等解码变体。
 # 数据来源：load_cells() 读取三个 JOENA 分支的缓存并取均值，同时加载对应 Dataset 和实体 JSON。
-# 核心依赖：PlanetAlign/m2m/quotient.py → evaluate_quotient_blind()；结果按数据集/种子汇总打印。
+# 核心依赖：PlanetAlign/m2m/quotient.py → quotient_decode() 预测，PlanetAlign/m2m/core.py → evaluate_predictions() 评分。
 
 """Multi-seed sweep of QuotientDecode readout variants over cached couplings.
 
@@ -30,7 +30,8 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "planeta
 import torch
 
 from PlanetAlign.data import Dataset
-from PlanetAlign.m2m.quotient import evaluate_quotient_blind
+from PlanetAlign.m2m import evaluate_predictions
+from PlanetAlign.m2m.quotient import quotient_decode
 from PlanetAlign.utils import get_anchor_pairs
 
 BRANCH_TAGS = ["", "_pc-u1.0-a1.0-t0.1", "_pc-u1.0-a1.0-t0.1-gm0.5"]
@@ -67,9 +68,9 @@ def run_variant(cells, label, **kw):
     per_ds = {}
     t0 = time.perf_counter()
     for c in cells:
-        sc = evaluate_quotient_blind(c["S"], c["gt"], c["g1"], c["g2"],
-                                     metrics=["MicroF1"], use_attr=True,
-                                     anchors=c["anchors"], **kw)
+        pred, _ = quotient_decode(c["S"], c["g1"], c["g2"], use_attr=True,
+                                  anchors=c["anchors"], **kw)
+        sc = evaluate_predictions(c["gt"], pred, metrics=["MicroF1"])
         per_ds.setdefault(c["name"], []).append(sc["MicroF1"])
     means = {ds: statistics.mean(v) for ds, v in per_ds.items()}
     overall = statistics.mean(means.values())

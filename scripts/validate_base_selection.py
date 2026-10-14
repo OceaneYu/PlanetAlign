@@ -35,10 +35,9 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "planeta
 import torch
 
 from PlanetAlign.data import Dataset
-from PlanetAlign.m2m import use_full_anchor_supervision
+from PlanetAlign.m2m import evaluate_predictions, use_full_anchor_supervision
 from PlanetAlign.m2m.base import train_base_S, arbitrate_sharpen
-from PlanetAlign.m2m.quotient import (entity_anchor_agreement, evaluate_quotient_blind,
-                                      quotient_decode)
+from PlanetAlign.m2m.quotient import entity_anchor_agreement, quotient_decode
 from PlanetAlign.utils import get_anchor_pairs
 
 GIDS = (0, 1)
@@ -65,8 +64,7 @@ def run_one(root: Path, name: str, bases: List[str], seed: int) -> Dict:
             S_best, T, _ = arbitrate_sharpen(S, g_src, g_tgt, anchors, use_attr=has_attr)
             pred, _ = quotient_decode(S_best, g_src, g_tgt, use_attr=has_attr, anchors=anchors)
             corrected, raw = entity_anchor_agreement(pred, anchors, n2)
-            sc = evaluate_quotient_blind(S_best, gt, g_src, g_tgt, metrics=["MicroF1"],
-                                         use_attr=has_attr, anchors=anchors)
+            sc = evaluate_predictions(gt, pred, metrics=["MicroF1"])
             out["bases"][b] = {"temp": T, "corrected": round(corrected, 4), "raw": round(raw, 4),
                                "blind_microf1": round(sc["MicroF1"], 4), "time_s": round(time.perf_counter()-t0, 1)}
         except Exception as exc:  # keep the grid going; a base can OOM/diverge

@@ -1,5 +1,5 @@
 # 文件作用：按数据集和算法批量训练，再用统一 QuotientDecode 评估多对多实体匹配。
-# 核心依赖：PlanetAlign/algorithms/ 的 train()；PlanetAlign/m2m/quotient.py → evaluate_quotient_blind()；PlanetAlign/data/dataset.py → Dataset。
+# 核心依赖：PlanetAlign/algorithms/ 的 train()；PlanetAlign/m2m/quotient.py → quotient_decode()；PlanetAlign/m2m/core.py → evaluate_predictions()。
 # 核心处理：evaluate_algorithm() 生成矩阵并校验，真实实体只交给评分；oracle 诊断需单独开启。
 # 结果去向：_write_outputs() 写 JSON/CSV，main() 打印批次摘要。
 # 阅读建议：main() → _algo_configs() → evaluate_algorithm() → _extract_s()，先区分各算法返回格式。
@@ -66,7 +66,8 @@ from PlanetAlign.m2m.diagnostics import (
     oracle_grouped_topk,
     oracle_grouped_topk_target_metrics,
 )
-from PlanetAlign.m2m.quotient import evaluate_quotient_blind
+from PlanetAlign.m2m import evaluate_predictions
+from PlanetAlign.m2m.quotient import quotient_decode
 from PlanetAlign.utils import get_anchor_pairs, pairwise_cosine_similarity
 
 
@@ -390,7 +391,7 @@ def _flatten_metrics(prefix: str, metrics: Dict[str, float]) -> Dict[str, float]
 
 
 # 输入来源：main() 传入已经加载的 Dataset、真实实体与一个算法配置。
-# 核心思路：训练后经 _extract_s() 取得 S，检查形状与有限值，再把 S、图和训练锚点交给 evaluate_quotient_blind()。
+# 核心思路：训练后检查 S，交给 quotient_decode() 预测，再由 evaluate_predictions() 用真实答案评分。
 # 输出结果：返回状态、耗时和带 Blind- 前缀的指标；可选 oracle 分数另行标记，异常不终止整批。
 def evaluate_algorithm(
     dataset_name: str,
@@ -446,16 +447,16 @@ def evaluate_algorithm(
             raise ValueError("similarity contains NaN or infinite values")
 
         anchors = get_anchor_pairs(dataset.train_data, GIDS[0], GIDS[1])
-        blind_scores, _, quotient_info = evaluate_quotient_blind(
+        # 预测：矩阵、图和训练锚点决定分组，不接收真实答案。
+        pred, quotient_info = quotient_decode(
             s,
-            gt_entities,
             dataset.pyg_graphs[GIDS[0]],
             dataset.pyg_graphs[GIDS[1]],
-            metrics=M2M_METRICS,
-            return_predictions=True,
             use_attr=_has_node_attributes(dataset, GIDS),
             anchors=anchors,
         )
+        # 评估：只在预测完成后使用真实答案；输出字段仍沿用原来的 Blind- 前缀。
+        blind_scores = evaluate_predictions(gt_entities, pred, metrics=M2M_METRICS)
 
         logged_train_kwargs = dict(train_kwargs)
 

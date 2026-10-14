@@ -19,7 +19,8 @@ from PlanetAlign.m2m.diagnostics import (
     oracle_grouped_topk,
     oracle_grouped_topk_target_metrics,
 )
-from PlanetAlign.m2m.quotient import evaluate_quotient_blind
+from PlanetAlign.m2m import evaluate_predictions
+from PlanetAlign.m2m.quotient import quotient_decode
 
 
 _RUNNER_PATH = Path(__file__).resolve().parents[1] / "scripts" / "run_m2m_experiments.py"
@@ -57,7 +58,7 @@ class _DummyDataset:
         self.train_data = torch.tensor([[0, 0]], dtype=torch.long)
 
 
-# 功能：通过 mock 替换评估函数，检查入口真正调用了哪条路径及输出字段。
+# 功能：用 mock 分别替换预测与评分，检查真实答案仅交给评分函数，以及输出字段保持一致。
 class RunnerProtocolTest(unittest.TestCase):
     def setUp(self):
         self.similarity = torch.tensor([[0.9, 0.1], [0.1, 0.9]])
@@ -97,9 +98,11 @@ class RunnerProtocolTest(unittest.TestCase):
     def test_default_runner_uses_blind_quotient_and_never_calls_oracle(self):
         with mock.patch.object(
             runner,
-            "evaluate_quotient_blind",
-            return_value=(self.blind_scores, {}, {"iters": 1}),
-        ) as blind, mock.patch.object(
+            "quotient_decode",
+            return_value=({}, {"iters": 1}),
+        ) as decode, mock.patch.object(
+            runner, "evaluate_predictions", return_value=self.blind_scores,
+        ) as evaluate, mock.patch.object(
             runner,
             "oracle_grouped_topk",
             side_effect=AssertionError("oracle path must be opt-in"),
@@ -108,7 +111,13 @@ class RunnerProtocolTest(unittest.TestCase):
 
         self.assertEqual(record["status"], "ok")
         self.assertEqual(record["m2m_protocol"], "blind_quotient_decode")
-        self.assertTrue(blind.called)
+        decode.assert_called_once()
+        self.assertEqual(len(decode.call_args.args), 3)
+        torch.testing.assert_close(decode.call_args.args[0], self.similarity)
+        self.assertIs(decode.call_args.args[1], self.dataset.pyg_graphs[0])
+        self.assertIs(decode.call_args.args[2], self.dataset.pyg_graphs[1])
+        self.assertEqual(set(decode.call_args.kwargs), {"use_attr", "anchors"})
+        evaluate.assert_called_once_with(self.gt, {}, metrics=runner.M2M_METRICS)
         oracle.assert_not_called()
         self.assertEqual(record["Blind-Micro Set-F1"], 0.3)
         for metric_name in runner.M2M_METRICS:
@@ -120,9 +129,9 @@ class RunnerProtocolTest(unittest.TestCase):
     def test_oracle_flag_adds_only_prefixed_target_diagnostics(self):
         with mock.patch.object(
             runner,
-            "evaluate_quotient_blind",
-            return_value=(self.blind_scores, {}, {"iters": 1}),
-        ):
+            "quotient_decode",
+            return_value=({}, {"iters": 1}),
+        ), mock.patch.object(runner, "evaluate_predictions", return_value=self.blind_scores):
             record = self._run(include_oracle_diagnostic=True)
 
         self.assertEqual(record["oracle_protocol"], ORACLE_GROUPED_TOPK_PROTOCOL)
@@ -190,14 +199,14 @@ class PublicApiAndImportTest(unittest.TestCase):
             f"e{node}": {"src": [node], "tgt": [node]}
             for node in range(4)
         }
-        scores = evaluate_quotient_blind(
+        pred, _ = quotient_decode(
             similarity,
-            gt,
             graphs[0],
             graphs[1],
             use_attr=False,
             anchors=dataset.train_data,
         )
+        scores = evaluate_predictions(gt, pred)
 
         self.assertEqual(tuple(similarity.shape), (4, 4))
         self.assertTrue(torch.isfinite(similarity).all())

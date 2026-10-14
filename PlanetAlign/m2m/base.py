@@ -1,7 +1,7 @@
 # 文件作用：把算法结果统一成节点配对分数表 S，并用训练时已知的节点对选择分数表的版本。
 # 数据来源：scripts/run_quotient_compare.py → main() 给 train_base_S() 传 Dataset，给 arbitrate_sharpen() 传矩阵、图与 anchors。
 # 核心依赖：PARROT 分支调用 PlanetAlign/algorithms/parrot.py → PARROT.train()；候选比较调用 PlanetAlign/m2m/quotient.py → quotient_decode()。
-# 结果去向：分数表返回入口，再由入口交给 PlanetAlign/m2m/quotient.py → evaluate_quotient_blind()。
+# 结果去向：分数表返回入口，交给 PlanetAlign/m2m/quotient.py → quotient_decode() 预测，再单独评分。
 # 阅读建议：先看 train_base_S() 怎样创建算法并提取 S，再看 arbitrate_sharpen() 怎样选择版本。
 
 """
@@ -40,9 +40,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import torch
 
 import PlanetAlign
+from PlanetAlign.m2m import evaluate_predictions
 from PlanetAlign.m2m.quotient import (
     entity_anchor_agreement,
-    evaluate_quotient_blind,
     quotient_decode,
 )
 from PlanetAlign.utils import pairwise_cosine_similarity
@@ -152,7 +152,7 @@ def sharpen(S: torch.Tensor, temp: Optional[float]) -> torch.Tensor:
 
 # 输入来源：入口或 arbitrate_base() 传入 S、两侧图和训练锚点 anchors，不接收真实分组答案。
 # 核心思路：试用原表和突出高分的版本，调用 PlanetAlign/m2m/quotient.py → quotient_decode() 分组，再用 entity_anchor_agreement() 检查已知节点对。
-# 输出结果：选中的 S、处理温度和比较表返回调用方；实验入口接着调用 evaluate_quotient_blind()。
+# 输出结果：选中的 S、处理温度和比较表返回调用方；实验入口接着调用 quotient_decode() 预测，再评分。
 def arbitrate_sharpen(S: torch.Tensor,
                       g_src,
                       g_tgt,
@@ -190,7 +190,7 @@ def arbitrate_sharpen(S: torch.Tensor,
 
 # 功能：逐一训练并处理候选基础算法，用训练锚点决定采用哪一个。
 # 核心思路：调用 train_base_S()、arbitrate_sharpen()，再用 PlanetAlign/m2m/quotient.py → entity_anchor_agreement() 排序。
-# 输出结果：返回算法名称、矩阵和比较表；gt_entities 只传给 evaluate_quotient_blind() 报告分数，不参与排序。
+# 输出结果：返回算法名称、矩阵和比较表；gt_entities 只传给 evaluate_predictions() 报告分数，不参与排序。
 def arbitrate_base(dataset,
                    bases: List[str],
                    gt_entities,
@@ -225,9 +225,7 @@ def arbitrate_base(dataset,
         pred, _ = quotient_decode(S_best, g_src, g_tgt, use_attr=has_attr,
                                   anchors=anchors, **decode_kwargs)
         corrected, raw = entity_anchor_agreement(pred, anchors, n2)
-        blind = evaluate_quotient_blind(S_best, gt_entities, g_src, g_tgt,
-                                        metrics=["MicroF1"], use_attr=has_attr,
-                                        anchors=anchors, **decode_kwargs)["MicroF1"]
+        blind = evaluate_predictions(gt_entities, pred, metrics=["MicroF1"])["MicroF1"]
         rows.append(dict(base=name, temp=T, corrected=corrected, raw=raw,
                          blind_microf1=blind, S=S_best))
         if verbose:

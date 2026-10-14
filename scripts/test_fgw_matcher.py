@@ -1,5 +1,5 @@
 # 文件作用：在固定 PARROT 矩阵上比较 Hungarian、邻居修正与 FGW 组匹配，是实验脚本而非单元测试。
-# 核心依赖：PlanetAlign/m2m/base.py 的训练/温度选择，以及 PlanetAlign/m2m/quotient.py → evaluate_quotient_blind() 的 matcher 选项。
+# 核心依赖：PlanetAlign/m2m/base.py 的训练/温度选择，以及 PlanetAlign/m2m/quotient.py → quotient_decode() 的 matcher 选项。
 # 结果去向：main() 将不同匹配设置的 MicroF1 与锚点一致性写入 --out。
 
 """Paired test: FGW quotient matcher vs Hungarian, over a frozen PARROT S.
@@ -31,10 +31,9 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "planeta
 import torch
 
 from PlanetAlign.data import Dataset
-from PlanetAlign.m2m import use_full_anchor_supervision
+from PlanetAlign.m2m import evaluate_predictions, use_full_anchor_supervision
 from PlanetAlign.m2m.base import train_base_S, arbitrate_sharpen
-from PlanetAlign.m2m.quotient import (entity_anchor_agreement, evaluate_quotient_blind,
-                                      quotient_decode)
+from PlanetAlign.m2m.quotient import entity_anchor_agreement, quotient_decode
 from PlanetAlign.utils import get_anchor_pairs
 
 DATASETS = ["douban_m2m", "cora_m2m", "airport_m2m", "pems08_m2m", "ppi_m2m",
@@ -44,9 +43,8 @@ ALPHAS = [0.1, 0.25, 0.5, 0.75]
 
 # 功能：使用指定解码参数预测并评分，再从原预测计算训练锚点一致性。
 def score(S, g_src, g_tgt, anchors, gt, has_attr, **decode_kw):
-    sc, pred, _ = evaluate_quotient_blind(
-        S, gt, g_src, g_tgt, metrics=["MicroF1"], return_predictions=True,
-        use_attr=has_attr, anchors=anchors, **decode_kw)
+    pred, _ = quotient_decode(S, g_src, g_tgt, use_attr=has_attr, anchors=anchors, **decode_kw)
+    sc = evaluate_predictions(gt, pred, metrics=["MicroF1"])
     corr, _ = entity_anchor_agreement(pred, anchors, int(g_tgt.num_nodes))
     return sc["MicroF1"], corr
 

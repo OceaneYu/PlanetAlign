@@ -1,9 +1,9 @@
 # 文件作用：把节点配对分数 S 变成“源节点组对应目标节点组”的多对多预测。
 # 数据来源：scripts/run_quotient_compare.py → main() 传入 S、两侧图和训练锚点 anchors。
 # 核心处理：quotient_decode() 提出分组、选择分组，再根据组与组的分数安排匹配。
-# 核心依赖：预测完成后，evaluate_quotient_blind() 调用 PlanetAlign/m2m/core.py → align_prediction_to_ground_truth() 对应编号，再交给 PlanetAlign/metrics/many_to_many.py 评分。
-# 结果去向：评分、原预测 pred 与记录 info 按返回选项交回入口；真实分组 gt 只用于评估。
-# 阅读建议：先看 evaluate_quotient_blind() 区分预测和评分，再看 quotient_decode() 的循环与返回值。
+# 结果去向：quotient_decode() 返回 pred 和 info；主程序再调用 PlanetAlign/m2m/core.py → evaluate_predictions() 评分。
+# 流程边界：本文件只负责预测；真实答案 gt 由评分函数接收，不进入解码。
+# 阅读建议：先看 scripts/run_quotient_compare.py → main() 的预测、评估两步，再读 quotient_decode()。
 
 """Quotient decoding: a principled many-to-many readout over a 1-1 aligner.
 
@@ -97,16 +97,12 @@ aligner first. A cheap train-anchor ``Hits@1`` check is a suitable guard.
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.nn.functional as F
 
-from PlanetAlign.algorithms.base_model import BaseModel
-from PlanetAlign.algorithms.joena import JOENA
-from PlanetAlign.data import Dataset
-from PlanetAlign.m2m import EntityMap, align_prediction_to_ground_truth
-from PlanetAlign.metrics import many_to_many_scores
+from PlanetAlign.m2m import EntityMap
 from PlanetAlign.utils import get_anchor_pairs
 
 
@@ -688,17 +684,17 @@ def _select_partitions(S: torch.Tensor,
     if anchors is not None and anchors.numel() > 0:
         scored = []
         for ns, gs in cands_s:
-            for nt, gt_ in cands_t:
-                corrected, raw = anchor_agreement(S, gs, gt_, anchors, matcher,
+            for nt, candidate_tgt_groups in cands_t:
+                corrected, raw = anchor_agreement(S, gs, candidate_tgt_groups, anchors, matcher,
                                                   relative_match_threshold)
-                scored.append((corrected, raw, gs, gt_, ns, nt))
+                scored.append((corrected, raw, gs, candidate_tgt_groups, ns, nt))
         # Occam among the anchor-consistent: candidates within a small tolerance
         # of the best corrected agreement are tied; among ties prefer the
         # coarsest partition pair (fewest groups that still explain the anchors).
         best_corrected = max(s[0] for s in scored)
         tied = [s for s in scored if s[0] >= best_corrected - 0.02]
-        corrected, raw, gs, gt_, ns, nt = min(tied, key=lambda s: len(s[2]) + len(s[3]))
-        return gs, gt_, ns, nt, corrected
+        corrected, raw, gs, candidate_tgt_groups, ns, nt = min(tied, key=lambda s: len(s[2]) + len(s[3]))
+        return gs, candidate_tgt_groups, ns, nt, corrected
 
     pick_s = max(cands_s, key=lambda c: partition_contrast(profiles_src, us, vs, c[1]))
     pick_t = max(cands_t, key=lambda c: partition_contrast(profiles_tgt, ut, vt, c[1]))
@@ -782,10 +778,10 @@ def _partition_signature(groups: Sequence[Sequence[int]]) -> Tuple[Tuple[int, ..
     return tuple(sorted(tuple(sorted(g)) for g in groups))
 
 
-# 流程位置：S 已生成之后、对照真实分组评分之前；PlanetAlign/m2m/base.py 也调用它比较矩阵版本。
-# 输入来源：调用者传入 S、两侧图和可选训练锚点；没有真实分组答案 gt 参数。
-# 核心思路：_candidate_partitions() 提出可能的组，_select_partitions() 选择组，pool_columns() 汇总分数帮助下一轮判断。
-# 输出结果：quotient_scores() 与匹配器确定组对应，返回 pred 实体字典与 info 过程记录给调用方。
+# 功能：只生成预测；提出候选分组、选择分组，再匹配两侧实体组。
+# 输入输出：接收 S、两侧图、可选训练锚点 anchors 和解码参数，返回 pred、info；不接收真实答案 gt。
+# 调用关系：scripts/run_quotient_compare.py → main() 调用后，将 pred 交给 PlanetAlign/m2m/core.py → evaluate_predictions()。
+# 阅读建议：依次看 _candidate_partitions()、_select_partitions()、quotient_scores() 和所选匹配器。
 def quotient_decode(S: torch.Tensor,
                     graph_src,
                     graph_tgt,
@@ -931,112 +927,3 @@ def quotient_decode(S: torch.Tensor,
 
     info["matched_groups"] = len(match)
     return pred, info
-
-
-# 输入来源：scripts/run_quotient_compare.py → main() 等传入 S、两侧图、真实分组和解码选项。
-# 功能：先把 S 和图交给 quotient_decode() 预测，再用 PlanetAlign/m2m/core.py → align_prediction_to_ground_truth() 对应编号。
-# 输出结果：调用 PlanetAlign/metrics/many_to_many.py → many_to_many_scores() 返回分数，按选项附带原预测与记录；gt 不传入预测函数。
-def evaluate_quotient_blind(S: torch.Tensor,
-                            gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
-                            graph_src,
-                            graph_tgt,
-                            metrics: Optional[Iterable[str]] = None,
-                            return_predictions: bool = False,
-                            **decode_kwargs):
-    """Blind scoring of :func:`quotient_decode` (GT never enters prediction)."""
-    pred, info = quotient_decode(S, graph_src, graph_tgt, **decode_kwargs)
-    aligned = align_prediction_to_ground_truth(gt_entities, pred)
-    scores = many_to_many_scores(gt_entities, aligned, metrics=metrics)
-    if return_predictions:
-        return scores, pred, info
-    return scores
-
-
-# ---------------------------------------------------------------------------
-# Model wrapper (JOENA aligner + quotient decode)
-# ---------------------------------------------------------------------------
-# 功能：将 JOENA 训练与本文件的多对多解码包装成一个模型对象。
-class JOENAQuotientDecode(BaseModel):
-    """JOENA aligner + quotient decoding readout.
-
-    Trains JOENA to produce the node similarity ``S``, then applies the full
-    quotient readout (adaptive taus, anti-chaining agglomeration, Hungarian
-    quotient matching, alternating refinement). The readout is aligner-agnostic;
-    see :mod:`PlanetAlign.m2m.base` for swapping in other base aligners (PARROT).
-    """
-
-    # 功能：把参数分别存入 JOENA 训练配置与实体解码配置，初始化待保存的图、锚点和解码记录。
-    # 流程位置：构造对象不启动计算；train() 取得 S，predict_entities() 再使用解码配置生成实体。
-    def __init__(self,
-                 tau: Optional[float] = None,
-                 max_iters: int = 2,
-                 relative_match_threshold: float = 0.0,
-                 matcher: str = "hungarian",
-                 anti_chaining: bool = True,
-                 evidence_selection: bool = True,
-                 null_candidate: bool = True,
-                 global_candidate: Optional[bool] = None,
-                 overlap_expand_tau: Optional[float] = None,
-                 alpha: float = 0.7,
-                 gamma_p: float = 1e-2,
-                 init_lambda: float = 1.0,
-                 hid_dim: int = 128,
-                 out_dim: int = 128,
-                 lr: float = 1e-4,
-                 dtype: torch.dtype = torch.float32):
-        super().__init__(dtype=dtype)
-        assert matcher in {"hungarian", "greedy"}
-        self.decode_kwargs = dict(
-            tau=tau, max_iters=max_iters,
-            relative_match_threshold=relative_match_threshold,
-            matcher=matcher, anti_chaining=anti_chaining,
-            evidence_selection=evidence_selection,
-            null_candidate=null_candidate,
-            global_candidate=global_candidate,
-            overlap_expand_tau=overlap_expand_tau,
-        )
-        self._use_attr = True
-        self._joena_kwargs = dict(alpha=alpha, gamma_p=gamma_p, init_lambda=init_lambda,
-                                  hid_dim=hid_dim, out_dim=out_dim, lr=lr)
-        self._graph_src = None
-        self._graph_tgt = None
-        self._anchors: Optional[torch.Tensor] = None
-        self.decode_info: Optional[Dict[str, object]] = None
-
-    # 功能：调用 PlanetAlign/algorithms/joena/main.py → JOENA.train() 得到 S，并保存两侧图和训练锚点。
-    # 输出结果：返回矩阵与日志，为 predict_entities() 准备模型状态。
-    def train(self,
-              dataset: Dataset,
-              gids: Union[Tuple[int, int], List[int]],
-              use_attr: bool = True,
-              total_epochs: int = 100,
-              save_log: bool = True,
-              verbose: bool = True):
-        gid1, gid2 = gids
-        joena = JOENA(dtype=self.dtype, **self._joena_kwargs).to(self.device)
-        S, logger = joena.train(dataset=dataset, gids=gids, use_attr=use_attr,
-                                total_epochs=total_epochs, save_log=save_log, verbose=verbose)
-        self.S = S.detach().to(self.dtype)
-        self._graph_src = dataset.pyg_graphs[gid1]
-        self._graph_tgt = dataset.pyg_graphs[gid2]
-        self._use_attr = use_attr
-        self._anchors = get_anchor_pairs(dataset.train_data, gid1, gid2)
-        return self.S, logger
-
-    # 功能：将 train() 保存的矩阵、图和锚点传给 quotient_decode()，返回不依赖真实实体的预测。
-    def predict_entities(self) -> EntityMap:
-        if self.S is None:
-            raise RuntimeError("Model is not trained yet, call train() first")
-        pred, info = quotient_decode(self.S, self._graph_src, self._graph_tgt,
-                                     use_attr=self._use_attr, anchors=self._anchors,
-                                     **self.decode_kwargs)
-        self.decode_info = info
-        return pred
-
-    # 功能：调用 predict_entities()，然后适配实体编号并评分，返回分数字典。
-    def test_blind(self,
-                   gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
-                   metrics: Optional[Iterable[str]] = None) -> Dict[str, float]:
-        pred = self.predict_entities()
-        aligned = align_prediction_to_ground_truth(gt_entities, pred)
-        return many_to_many_scores(gt_entities, aligned, metrics=metrics)
