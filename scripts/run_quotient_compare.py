@@ -43,7 +43,7 @@ from PlanetAlign.data import Dataset
 from PlanetAlign.m2m.blind import evaluate_blind, discover_groups_by_profile, decode_entity_map
 from PlanetAlign.m2m import align_prediction_to_ground_truth, evaluate_predictions, use_full_anchor_supervision
 from PlanetAlign.m2m.quotient import quotient_decode
-from PlanetAlign.metrics import many_to_many_scores
+from PlanetAlign.metrics import InvalidPredictionError, MSF1_PROTOCOL, many_to_many_scores
 from PlanetAlign.utils import get_anchor_pairs
 
 GIDS = [0, 1]
@@ -51,14 +51,15 @@ M2M_METRICS = ["Macro Set-F1", "Micro Set-F1", "AUIS", "AUCS"]
 
 
 # 核心思路：调用 PlanetAlign/m2m/blind.py → discover_groups_by_profile() 固定阈值分组，再 decode_entity_map() 贪心匹配。
-# 输出结果：经实体编号适配与指标计算，返回分数字典和两侧组数给 main()。
-def profile_greedy_scores(S, gt, g_src, g_tgt, tau=0.1):
+# 输出结果：MSF1 用原始预测、其他指标用编号适配结果评分；分数字典和两侧组数返回 main()。
+def profile_greedy_scores(S, gt, g_src, g_tgt, tau=0.1, *, allow_overlap=False):
     """The earliest readout: fixed-tau profile union-find + greedy match."""
     src_groups = discover_groups_by_profile(S, g_src, tau=tau)
     tgt_groups = discover_groups_by_profile(S.T.contiguous(), g_tgt, tau=tau)
     pred = decode_entity_map(S, src_groups, tgt_groups)
     aligned = align_prediction_to_ground_truth(gt, pred)
-    scores = many_to_many_scores(gt, aligned, metrics=M2M_METRICS)
+    scores = many_to_many_scores(gt, pred, metrics=M2M_METRICS, aligned_pred_entities=aligned,
+                                allow_overlap=allow_overlap)
     return scores, (len(src_groups), len(tgt_groups))
 
 
@@ -95,7 +96,10 @@ def main() -> int:
         # built from the original test split (disjoint, verified all datasets).
         use_full_anchor_supervision(ds)
     # 数据来源：gt 是 JSON 中的真实分组，提前读入供评分；PARROT 和 quotient_decode() 不接收它。
-    gt = json.load(open(args.root / f"{args.dataset}_gt_many2many.json"))["entities"]
+    with (args.root / f"{args.dataset}_gt_many2many.json").open() as handle:
+        gt_payload = json.load(handle)
+    gt = gt_payload["entities"]
+    allow_overlap = gt_payload.get("metadata", {}).get("overlap_ratio", 0.0) > 0
     g_src, g_tgt = ds.pyg_graphs[GIDS[0]], ds.pyg_graphs[GIDS[1]]
     use_attr = all(g.x is not None for g in (g_src, g_tgt))
     print(f"dataset={args.dataset} nodes={[g_src.num_nodes, g_tgt.num_nodes]} "
@@ -188,7 +192,7 @@ def main() -> int:
             # 预测：只传矩阵、图和训练锚点，不传真实答案。
             pred, info = quotient_decode(S_m, g_src, g_tgt, use_attr=use_attr, anchors=anchors)
             # 评估：gt 只参与评分，分支选择仍只看下方的训练锚点一致性。
-            scores = evaluate_predictions(gt, pred, metrics=M2M_METRICS)
+            scores = evaluate_predictions(gt, pred, metrics=M2M_METRICS, allow_overlap=allow_overlap)
             corr, raw = entity_anchor_agreement(pred, anchors, int(g_tgt.num_nodes))
             branches[m] = (S_m, scores, corr, raw)
             print(f"  [branch {m:<12}] Micro Set-F1={scores['Micro Set-F1']:.4f} "
@@ -219,29 +223,43 @@ def main() -> int:
 
     # 功能：将当前解码方式的指标、额外信息和耗时追加到 records，并打印主要分数。
     def add(name: str, scores: Dict[str, float], extra: Dict[str, Any] = None, dt: float = 0.0):
-        rec = {"readout": name, **scores, "decode_s": round(dt, 2), **(extra or {})}
+        rec = {"readout": name, "status": "ok", **scores, "decode_s": round(dt, 2), **(extra or {})}
         records.append(rec)
         print(f"  {name:<28} Micro Set-F1={scores['Micro Set-F1']:.4f} "
               f"Macro Set-F1={scores['Macro Set-F1']:.4f} "
               f"AUIS={scores['AUIS']:.4f} AUCS={scores['AUCS']:.4f} ({dt:.1f}s)")
 
+    def record_readout(name, evaluate, started):
+        try:
+            scores, extra = evaluate()
+        except InvalidPredictionError as exc:
+            records.append({"readout": name, "status": "invalid_prediction", "error": str(exc),
+                            "decode_s": round(time.perf_counter() - started, 2)})
+            print(f"  {name:<28} invalid_prediction: {exc}")
+            return
+        add(name, scores, extra, time.perf_counter() - started)
+
     # 1) attribute-cohesion blind (the diagnostic's default readout)
     t = time.perf_counter()
-    sc = evaluate_blind(S, gt, g_src, g_tgt, metrics=M2M_METRICS, use_attr=use_attr)
-    add("attr-blind", sc, dt=time.perf_counter() - t)
+    record_readout("attr-blind", lambda: (
+        evaluate_blind(S, gt, g_src, g_tgt, metrics=M2M_METRICS, use_attr=use_attr,
+                       allow_overlap=allow_overlap), {}), t)
 
     # 2) fixed-tau profile-greedy readout (tau 0.1)
     t = time.perf_counter()
-    sc, counts = profile_greedy_scores(S, gt, g_src, g_tgt, tau=0.1)
-    add("profile-greedy(tau=0.1)", sc, {"groups": counts}, time.perf_counter() - t)
+    def profile_scores():
+        sc, counts = profile_greedy_scores(S, gt, g_src, g_tgt, tau=0.1, allow_overlap=allow_overlap)
+        return sc, {"groups": counts}
+    record_readout("profile-greedy(tau=0.1)", profile_scores, t)
 
     # 3) QuotientDecode 主线：先预测，再评估；计时仍覆盖两步。
     t = time.perf_counter()
     # 预测阶段：PlanetAlign/m2m/quotient.py → quotient_decode()；不使用真实答案 gt。
     pred, info = quotient_decode(S, g_src, g_tgt, use_attr=use_attr, anchors=anchors)
     # 评估阶段：PlanetAlign/m2m/core.py → evaluate_predictions()；用 gt 对应编号并评分。
-    scores = evaluate_predictions(gt, pred, metrics=M2M_METRICS)
-    add("quotient(full)", scores, {"info": info}, time.perf_counter() - t)
+    record_readout("quotient(full)", lambda: (
+        evaluate_predictions(gt, pred, metrics=M2M_METRICS, allow_overlap=allow_overlap),
+        {"info": info}), t)
 
     if not args.skip_ablations:
         for name, kw in [
@@ -259,14 +277,16 @@ def main() -> int:
             t = time.perf_counter()
             # 每个对照配置也遵循先预测、后评分的顺序；参数与主线保持原来的设置。
             pred, info = quotient_decode(S, g_src, g_tgt, use_attr=use_attr, **kw)
-            scores = evaluate_predictions(gt, pred, metrics=M2M_METRICS)
-            add(name, scores, {"info": info}, time.perf_counter() - t)
+            record_readout(name, lambda: (
+                evaluate_predictions(gt, pred, metrics=M2M_METRICS, allow_overlap=allow_overlap),
+                {"info": info}), t)
 
     out = args.out or Path(f"logs/m2m_diag/quotient_compare_{args.dataset}{model_tag}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:
         json.dump({"dataset": args.dataset, "root": str(args.root), "seed": args.seed,
-                   "epochs": args.epochs, "records": records}, f, ensure_ascii=False, indent=2,
+                   "epochs": args.epochs, "msf1_protocol": MSF1_PROTOCOL,
+                   "allow_overlap": allow_overlap, "records": records}, f, ensure_ascii=False, indent=2,
                   default=str)
     print(f"wrote {out}")
     return 0

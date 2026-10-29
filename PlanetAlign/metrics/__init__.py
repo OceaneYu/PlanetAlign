@@ -8,7 +8,7 @@ import copy
 from .hits import *
 from .mrr import *
 from .ranking import mean_rank_score, pairwise_ranks, rank_diagnostics
-from .metrics_MSF1 import macro_f1_score, macro_set_f1
+from .metrics_MSF1 import InvalidPredictionError, MSF1_PROTOCOL, macro_f1_score, macro_set_f1
 from .metrics_Micro_SF1 import global_set_f1, micro_f1_score
 from .metrics_AUCS import aucs_score, weighted_aucs_score
 from .metrics_AUIS import auis_score, weighted_auis_score
@@ -24,6 +24,8 @@ __all__ = [
     'pairwise_ranks',
     'rank_diagnostics',
     'macro_f1_score',
+    'InvalidPredictionError',
+    'MSF1_PROTOCOL',
     'micro_f1_score',
     'auis_score',
     'weighted_auis_score',

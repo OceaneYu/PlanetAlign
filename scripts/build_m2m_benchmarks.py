@@ -194,8 +194,10 @@ def build_one(path: Path, args: argparse.Namespace) -> Dict[str, object]:
         # Re-open through the standard Dataset class to catch schema mistakes.
         _ = Dataset(root=args.output_root, name=output_name, train_ratio=args.train_ratio, seed=args.seed, dtype=args.dtype)
         gt = m2m.entities
-        perfect = many_to_many_scores(gt, {eid: dict(entity) for eid, entity in gt.items()})
-        empty = many_to_many_scores(gt, {eid: {"src": [], "tgt": []} for eid in gt})
+        perfect = many_to_many_scores(gt, {eid: dict(entity) for eid, entity in gt.items()},
+                                      allow_overlap=args.overlap_ratio > 0)
+        empty = many_to_many_scores(gt, {eid: {"src": [], "tgt": []} for eid in gt},
+                                    allow_overlap=args.overlap_ratio > 0)
         record["perfect_scores"] = perfect
         record["empty_scores"] = empty
         print(f"       perfect: {_format_scores(perfect)}")

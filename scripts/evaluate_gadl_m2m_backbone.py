@@ -352,7 +352,9 @@ def main() -> int:
 
     gt_path = args.root / f"{args.dataset}_gt_many2many.json"
     with gt_path.open("r", encoding="utf-8") as handle:
-        entities = json.load(handle)["entities"]
+        gt_payload = json.load(handle)
+        entities = gt_payload["entities"]
+    allow_overlap = gt_payload.get("metadata", {}).get("overlap_ratio", 0.0) > 0
 
     gadl_similarity = similarity_diagnostics(S_gadl)
     existing_similarity = similarity_diagnostics(S_existing)
@@ -388,7 +390,8 @@ def main() -> int:
         ),
         ("JOENA", S_existing, blind_existing, existing_provenance),
     ):
-        metrics = evaluate_predictions(entities, blind["predictions"], metrics=M2M_METRICS)
+        metrics = evaluate_predictions(entities, blind["predictions"], metrics=M2M_METRICS,
+                                       allow_overlap=allow_overlap)
         backbones[name] = {
             "provenance": provenance,
             "similarity": gadl_similarity if name == "GADL" else existing_similarity,

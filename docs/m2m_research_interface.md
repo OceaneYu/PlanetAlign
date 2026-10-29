@@ -70,10 +70,11 @@ from PlanetAlign.m2m import evaluate_predictions
 scores = evaluate_predictions(gt_entities, pred_entities)
 ```
 
-By default, `evaluate_predictions()` first relabels predicted group ids by
-node-overlap with GT groups. This makes the metric adapter invariant to a pure
-cluster-id permutation. Pass `match_entities=False` if you need strict eid
-matching.
+MSF1 uses the raw groups and performs its own globally optimal matching,
+independent of entity ids. The other metrics retain their existing entity-id
+adapter; `match_entities=False` changes only those metrics. MSF1 defaults to
+the non-overlapping contract. For an overlapping benchmark, explicitly pass
+`allow_overlap=True` (the runner obtains this from `metadata.overlap_ratio`).
 
 Evaluate a node-level similarity matrix with the blind quotient decoder:
 
@@ -104,6 +105,8 @@ Micro Set-F1
 AUIS
 AUCS
 ```
+
+`Macro Set-F1` is now **MSF1-v2**: globally matched bilateral unit-member F1, divided by the fixed number of true test units `K` (`MSF1-v2-K`). By default, same-side nodes shared by different prediction units raise `InvalidPredictionError`, including duplicates and out-of-scope groups. Overlapping benchmarks must explicitly pass `allow_overlap=True`; this separate mode retains its duplicate-prediction limitation. A prediction participates only if it contains a test GT node, but its entire source/target membership is retained, including wrong training/background members. Purely out-of-scope groups are ignored. MSF1 uses raw predictions; the other metrics retain their previous entity-id adaptation. Historical MSF1 results are not directly comparable. See [the exact protocol and examples](MSF1.md).
 
 ## Similarity-producing Baselines
 

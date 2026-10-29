@@ -1,0 +1,448 @@
+{
+  "msf1_protocol": "MSF1-v2-K",
+  "training_performed": false,
+  "toy_cases": [
+    {
+      "case": "perfect",
+      "status": "ok",
+      "MSF1": 1.0,
+      "NumEntities": 1.0,
+      "NumPredEntities": 1.0,
+      "IgnoredPredEntities": 0.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 0.0
+    },
+    {
+      "case": "empty",
+      "status": "ok",
+      "MSF1": 0.0,
+      "NumEntities": 1.0,
+      "NumPredEntities": 0.0,
+      "IgnoredPredEntities": 0.0,
+      "MissingPredEntities": 1.0,
+      "ExtraPredEntities": 0.0
+    },
+    {
+      "case": "extra_member",
+      "status": "ok",
+      "MSF1": 0.8,
+      "NumEntities": 1.0,
+      "NumPredEntities": 1.0,
+      "IgnoredPredEntities": 0.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 0.0
+    },
+    {
+      "case": "missing_member",
+      "status": "ok",
+      "MSF1": 0.6666666666666666,
+      "NumEntities": 1.0,
+      "NumPredEntities": 1.0,
+      "IgnoredPredEntities": 0.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 0.0
+    },
+    {
+      "case": "wrong_source",
+      "status": "ok",
+      "MSF1": 0.5,
+      "NumEntities": 1.0,
+      "NumPredEntities": 1.0,
+      "IgnoredPredEntities": 0.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 0.0
+    },
+    {
+      "case": "pure_background",
+      "status": "ok",
+      "MSF1": 1.0,
+      "NumEntities": 1.0,
+      "NumPredEntities": 1.0,
+      "IgnoredPredEntities": 1.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 0.0
+    },
+    {
+      "case": "missing_group",
+      "status": "ok",
+      "MSF1": 0.5,
+      "NumEntities": 2.0,
+      "NumPredEntities": 1.0,
+      "IgnoredPredEntities": 0.0,
+      "MissingPredEntities": 1.0,
+      "ExtraPredEntities": 0.0
+    },
+    {
+      "case": "split",
+      "status": "ok",
+      "MSF1": 0.6666666666666666,
+      "NumEntities": 1.0,
+      "NumPredEntities": 2.0,
+      "IgnoredPredEntities": 0.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 1.0
+    },
+    {
+      "case": "merge",
+      "status": "ok",
+      "MSF1": 0.3333333333333333,
+      "NumEntities": 2.0,
+      "NumPredEntities": 1.0,
+      "IgnoredPredEntities": 0.0,
+      "MissingPredEntities": 1.0,
+      "ExtraPredEntities": 0.0
+    },
+    {
+      "case": "swapped_targets",
+      "status": "ok",
+      "MSF1": 0.5,
+      "NumEntities": 2.0,
+      "NumPredEntities": 2.0,
+      "IgnoredPredEntities": 0.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 0.0
+    },
+    {
+      "case": "duplicate",
+      "status": "invalid_prediction",
+      "error": "Invalid prediction for non-overlapping benchmark: src node 1 belongs to units 'P' and 'Q'. Use allow_overlap=True only for an overlapping benchmark."
+    },
+    {
+      "case": "duplicate_merged",
+      "status": "invalid_prediction",
+      "error": "Invalid prediction for non-overlapping benchmark: src node 1 belongs to units 'P' and 'Q'. Use allow_overlap=True only for an overlapping benchmark."
+    },
+    {
+      "case": "target_overlap",
+      "status": "invalid_prediction",
+      "error": "Invalid prediction for non-overlapping benchmark: tgt node 5 belongs to units 'P' and 'Q'. Use allow_overlap=True only for an overlapping benchmark."
+    }
+  ],
+  "benchmark_boundary_checks": [
+    {
+      "dataset": "acm-dblp_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 5060,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "473075af6e6aeb7164537647a713651627a258cee65b8a0cbb5ab7af59a0e870",
+      "source_only": 0.6593448744930959,
+      "all_members_as_singletons": 0.5787449024405545
+    },
+    {
+      "dataset": "airport_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 952,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "c03f9374726e8d18806cc5060234813d3163c47cf0a4a55a1ad1031dae6fc62f",
+      "source_only": 0.6598758442771048,
+      "all_members_as_singletons": 0.5803304655195411
+    },
+    {
+      "dataset": "arenas_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 908,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "5fbff2461d163a113695eab1e61900f814c6c575f6d87628a2bbed772f8fe3c7",
+      "source_only": 0.658619629269409,
+      "all_members_as_singletons": 0.5796963499056009
+    },
+    {
+      "dataset": "arxiv_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 15018,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "190c615ea6b3eb447510c2a3426750ee3a5fa7df8da142440cb2dd49ade2bd70",
+      "source_only": 0.6587820973657968,
+      "all_members_as_singletons": 0.5784309093637899
+    },
+    {
+      "dataset": "cora_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 2167,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "d611c7d5efb594be1ae2789b3ff0f8b2beca90bc865171524a618ddf09075df9",
+      "source_only": 0.660420408182291,
+      "all_members_as_singletons": 0.5787571142901091
+    },
+    {
+      "dataset": "dbp15k_fr-en_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 12000,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "9f385e6a73806c86053e133508a24e88aae49f1a5938a532bc67b1faeb9b185f",
+      "source_only": 0.6587674783549783,
+      "all_members_as_singletons": 0.5783224867724868
+    },
+    {
+      "dataset": "dbp15k_ja-en_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 12000,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "d4429e8f33352f6ee74bc03523118913359839f49d9e088c193fc9864f82818c",
+      "source_only": 0.6587674783549783,
+      "all_members_as_singletons": 0.5783224867724868
+    },
+    {
+      "dataset": "dbp15k_zh-en_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 12000,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "1b386d08e0a386d5ccdde6a6709eaede648ae21f7e4d08aa7dcc1ab44bf8f267",
+      "source_only": 0.6587674783549783,
+      "all_members_as_singletons": 0.5783224867724868
+    },
+    {
+      "dataset": "douban_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 895,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "9f1a517eb6cc124a4200b320d1317eb4decc7c3a2585f917f5f0a9a9ce3e4c86",
+      "source_only": 0.6600298274041291,
+      "all_members_as_singletons": 0.5787337057728119
+    },
+    {
+      "dataset": "flickr-lastfm_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 361,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "b2a9528a7dde85c212813a0d874501dcbbf9cf20174becc9e5373cc5ab1160dd",
+      "source_only": 0.6576215259040743,
+      "all_members_as_singletons": 0.5789451699423999
+    },
+    {
+      "dataset": "flickr-myspace_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 214,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "d061f5a0a88848782feb8f23e1a2cfc3114de96470de5831aef3d1025f6907bb",
+      "source_only": 0.663275950425483,
+      "all_members_as_singletons": 0.5811897344607625
+    },
+    {
+      "dataset": "foursquare-twitter_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 1288,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "4b37d4a5e0f9cd214f7e5927f4fd1b789ac62b51800787ed454bab63a6be9407",
+      "source_only": 0.6603697243060598,
+      "all_members_as_singletons": 0.578457433698117
+    },
+    {
+      "dataset": "ggi_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 8323,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "639e00c03107aff650bc2e9f37214aaca00c2d48a501874c48b9bf0d91304e62",
+      "source_only": 0.6593864703921174,
+      "all_members_as_singletons": 0.5784614827147567
+    },
+    {
+      "dataset": "italy_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 302,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "2da78af0e11ee5e12d4536297ccb3b93583067a34702a4d8d533a72736aed1ab",
+      "source_only": 0.6580057911183739,
+      "all_members_as_singletons": 0.5797671607274256
+    },
+    {
+      "dataset": "pems08_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 136,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "86acf55d91bc8b8f622989ef38c84947b651e8934c2a4e4c6440360085835b0b",
+      "source_only": 0.6540149393090569,
+      "all_members_as_singletons": 0.573062558356676
+    },
+    {
+      "dataset": "phone-email_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 800,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "1169e1a73f255c25ad6e3534e7888dff2709924eb87ccb2684064d5509020620",
+      "source_only": 0.6613816738816739,
+      "all_members_as_singletons": 0.5761765873015873
+    },
+    {
+      "dataset": "ppi_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 2784,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "a2f86d7ad21cd5b6ae90cf9682a532924d8a6210356ab4d2b297d7f86c80517c",
+      "source_only": 0.6582650447413378,
+      "all_members_as_singletons": 0.5788388295931399
+    },
+    {
+      "dataset": "sacchcere_m2m_gt_many2many",
+      "allow_overlap": false,
+      "K": 1070,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "f12f0f96e4e47c8b553d61208b455747cca4c32244eda02a4ca19d1a64a39b48",
+      "source_only": 0.6569353751129452,
+      "all_members_as_singletons": 0.5798116006527222
+    },
+    {
+      "dataset": "acm-dblp_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 5060,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "ba6dfd3a52b97f04d160aa43fc98fa41be43cf6e20193a590266ae3545ae3e72"
+    },
+    {
+      "dataset": "airport_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 952,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "c0311902a4483351764379bd11b651ddebbe26703bc123b0c247f835aa4913ad"
+    },
+    {
+      "dataset": "arenas_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 908,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "f3a8e71391ac38d7c45a7667ac78bb5be11a24d19a9d135f6356522cf5c9dcc2"
+    },
+    {
+      "dataset": "arxiv_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 15018,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "cbc9f8daa0b48a83df574a4d116e8536b00c16465f71af53a6f14575850c1d3c"
+    },
+    {
+      "dataset": "cora_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 2167,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "16d425bc9b209b7e2abb8b6c48599da70f9e18bf5b7f15ce8d542c118ea42be5"
+    },
+    {
+      "dataset": "dbp15k_fr-en_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 12000,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "f5eb74bac1878740243580b950c351f3c8d5351399eed414cc78452c83c71825"
+    },
+    {
+      "dataset": "dbp15k_ja-en_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 12000,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "13cd5715a69fb891690e3586a3786e86bc2135d875e8e62e8ad06dd8190486c4"
+    },
+    {
+      "dataset": "dbp15k_zh-en_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 12000,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "8d9cd56011079c1d0b84ebc4cc27446042c0ef28588f048a399169e6fe53a531"
+    },
+    {
+      "dataset": "douban_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 895,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "1b25e98744f8dcf9c20749b793fc1d4e5e8126dc7c934f9859c06ab4232809ce"
+    },
+    {
+      "dataset": "flickr-lastfm_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 361,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "6cf0fdf25ef48fb5f0a54d3684fcf4fdd0ae90593b774c29a46b2282ba04b737"
+    },
+    {
+      "dataset": "flickr-myspace_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 214,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "65f664370b801b54396aaa1039cefd3b85d5eff6420e19dc4872abed14777187"
+    },
+    {
+      "dataset": "foursquare-twitter_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 1288,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "2ba314ee4940e78d33c0c778aaa0ceb6aeca150ed6545bbf1084fa0f550df636"
+    },
+    {
+      "dataset": "ggi_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 8323,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "5898a20fd009bea6f91cdbced708ec1f5c4dea81f81ca3fe07a080867f79081b"
+    },
+    {
+      "dataset": "italy_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 302,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "a34b6eac9718211f558e1236e7ea152b9fdff312a0bc43e0f7f42e07766fea1d"
+    },
+    {
+      "dataset": "pems08_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 136,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "a62c98c12c0a5a187e4f75c77feb933dcfb88e790bd51b4a7fbb4df03e1fffbf"
+    },
+    {
+      "dataset": "phone-email_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 800,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "853a693d914dea601961697dd002fee0a868fa7e4167293977f31136f4ab752e"
+    },
+    {
+      "dataset": "ppi_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 2784,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "0422aaa4918176c9cbb62d4b2123a037d4ae3a0daa74afbb12345985c5fca665"
+    },
+    {
+      "dataset": "sacchcere_m2m_gt_many2many",
+      "allow_overlap": true,
+      "K": 1070,
+      "perfect": 1.0,
+      "empty": 0.0,
+      "gt_sha256": "64cc8c6128717f0987cf5ff0f2774390b59bd9a21fcb316fa0475083efbbb057"
+    }
+  ],
+  "note": "Source-only and singleton predictions are controlled GT-based diagnostics, not algorithm performance. Overlap results are a separate explicit mode."
+}

@@ -1,0 +1,16 @@
+{
+  "patterns": [
+    "test_macro_set_f1.py",
+    "test_rescore_msf1.py",
+    "test_m2m*.py",
+    "test_many_to_many_metrics.py"
+  ],
+  "tests_run": 101,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "successful": true,
+  "random_exhaustive_cases": 400,
+  "python": "/opt/miniconda3/envs/m2m/bin/python",
+  "command": "PYTHONDONTWRITEBYTECODE=1 MPLCONFIGDIR=/tmp/planetalign-msf1-mpl /opt/miniconda3/envs/m2m/bin/python -B -m unittest discover -s tests -p <pattern>"
+}

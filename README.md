@@ -110,6 +110,8 @@ available. Submodule imports now use `PlanetAlign.m2m.base`,
 | `utils/many2many_builder.py` | M2M benchmark builder (node-splitting) with a hard cross-set leakage invariant |
 | `metrics/` | Macro Set-F1, Micro Set-F1, AUIS, AUCS |
 
+**MSF1 protocol update:** `Macro Set-F1` now uses bilateral unit-member recovery with globally optimal matching (MSF1-v2). Only predictions touching test GT nodes participate; their full membership, including wrong training/background members, is scored. The denominator is the fixed number of true test units `K` (protocol `MSF1-v2-K`). MSF1 rejects cross-unit node reuse on either side by default; overlapping benchmarks must explicitly use `allow_overlap=True`. Historical MSF1 results are not directly comparable. See [the scoring protocol](docs/MSF1.md). Micro Set-F1, AUIS and AUCS keep their existing definitions.
+
 ### Scripts (`scripts/`)
 **Formal experiment pipeline**
 | Script | Purpose |

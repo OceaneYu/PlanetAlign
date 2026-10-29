@@ -80,7 +80,7 @@ class RunnerProtocolTest(unittest.TestCase):
         }
 
     # 功能：将固定替身数据与配置传给 evaluate_algorithm()，供两个协议测试共用。
-    def _run(self, include_oracle_diagnostic=False):
+    def _run(self, include_oracle_diagnostic=False, allow_overlap=False):
         return runner.evaluate_algorithm(
             dataset_name="toy_m2m",
             dataset=self.dataset,
@@ -92,6 +92,7 @@ class RunnerProtocolTest(unittest.TestCase):
             verbose=False,
             auto_disable_attr=True,
             include_oracle_diagnostic=include_oracle_diagnostic,
+            allow_overlap=allow_overlap,
         )
 
     # 功能：把 oracle 函数设为调用即报错，验证默认路径只执行盲解码。
@@ -117,7 +118,7 @@ class RunnerProtocolTest(unittest.TestCase):
         self.assertIs(decode.call_args.args[1], self.dataset.pyg_graphs[0])
         self.assertIs(decode.call_args.args[2], self.dataset.pyg_graphs[1])
         self.assertEqual(set(decode.call_args.kwargs), {"use_attr", "anchors"})
-        evaluate.assert_called_once_with(self.gt, {}, metrics=runner.M2M_METRICS)
+        evaluate.assert_called_once_with(self.gt, {}, metrics=runner.M2M_METRICS, allow_overlap=False)
         oracle.assert_not_called()
         self.assertEqual(record["Blind-Micro Set-F1"], 0.3)
         for metric_name in runner.M2M_METRICS:
@@ -125,6 +126,23 @@ class RunnerProtocolTest(unittest.TestCase):
             self.assertNotIn(metric_name, runner.CSV_FIELDS)
             self.assertIn(f"Blind-{metric_name}", runner.CSV_FIELDS)
         self.assertNotIn("oracle_protocol", record)
+
+    def test_invalid_prediction_is_reported_without_benchmark_scores(self):
+        duplicate = {"P": self.gt["e0"], "Q": self.gt["e0"]}
+        with mock.patch.object(runner, "quotient_decode", return_value=(duplicate, {})):
+            record = self._run()
+        self.assertEqual(record["status"], "invalid_prediction")
+        self.assertIn("src node 0", record["error"])
+        self.assertFalse(any(key.startswith("Blind-") for key in record))
+
+    def test_overlapping_benchmark_mode_is_explicitly_forwarded(self):
+        with mock.patch.object(runner, "quotient_decode", return_value=({}, {})), mock.patch.object(
+            runner, "evaluate_predictions", return_value=self.blind_scores,
+        ) as evaluate:
+            record = self._run(allow_overlap=True)
+        self.assertEqual(record["status"], "ok")
+        self.assertTrue(record["allow_overlap"])
+        evaluate.assert_called_once_with(self.gt, {}, metrics=runner.M2M_METRICS, allow_overlap=True)
 
     def test_oracle_flag_adds_only_prefixed_target_diagnostics(self):
         with mock.patch.object(

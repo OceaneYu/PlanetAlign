@@ -1,11 +1,11 @@
 # 文件作用：比较真实与预测实体集合，返回各多对多指标的分数。
-# 数据来源：PlanetAlign/m2m/core.py → evaluate_predictions() 在编号对应后传入真实与预测实体字典。
+# 数据来源：PlanetAlign/m2m/core.py → evaluate_predictions() 同时传入原始预测和供其他指标使用的编号适配结果。
 # 核心依赖：PlanetAlign/metrics/metrics_MSF1.py、PlanetAlign/metrics/metrics_Micro_SF1.py、PlanetAlign/metrics/metrics_AUIS.py、PlanetAlign/metrics/metrics_AUCS.py 的评分函数。
 # 阅读建议：先看 many_to_many_scores() 如何选指标和返回 scores，需要了解分数定义时再读具体指标。
 
 from typing import Callable, Dict, Iterable, List, Optional
 
-from .metrics_MSF1 import macro_f1_score, macro_set_f1
+from .metrics_MSF1 import macro_f1_score
 from .metrics_Micro_SF1 import global_set_f1, micro_f1_score
 from .metrics_AUCS import aucs_score, weighted_aucs_score
 from .metrics_AUIS import auis_score, weighted_auis_score
@@ -26,6 +26,9 @@ def many_to_many_scores(
     gt_entities: EntityMap,
     pred_entities: EntityMap,
     metrics: Optional[Iterable[str]] = None,
+    *,
+    aligned_pred_entities: Optional[EntityMap] = None,
+    allow_overlap: bool = False,
 ) -> Dict[str, float]:
     """Compute a compact set of many-to-many alignment scores.
 
@@ -35,11 +38,17 @@ def many_to_many_scores(
         Ground-truth entities in the JSON-compatible format used by the
         many-to-many metric files: ``{eid: {"src": [...], "tgt": [...]}}``.
     pred_entities
-        Predicted entities in the same format.
+        Original predicted entities. MSF1-v2 always uses these groups directly.
     metrics
         Optional iterable of metric names. Defaults to Macro Set-F1,
         Micro Set-F1, AUIS, and AUCS. Weighted AUIS/AUCS are supplemental
         diagnostics and must be requested explicitly.
+    aligned_pred_entities
+        Optional existing entity-id alignment for Micro Set-F1 and AUIS/AUCS.
+        If omitted, those metrics use pred_entities as before. Never used by MSF1.
+    allow_overlap
+        Explicit opt-in for overlapping benchmarks. MSF1 otherwise rejects
+        same-side nodes shared by different units. Other metrics are unchanged.
     """
 
     metric_fns: Dict[str, tuple[str, Callable[[EntityMap, EntityMap], float]]] = {
@@ -67,7 +76,11 @@ def many_to_many_scores(
             invalid_metrics.append(metric)
             continue
         out_name, fn = metric_fns[key]
-        results[out_name] = float(fn(gt_entities, pred_entities))
+        prediction = pred_entities if fn is macro_f1_score or aligned_pred_entities is None else aligned_pred_entities
+        if fn is macro_f1_score:
+            results[out_name] = float(fn(gt_entities, prediction, allow_overlap=allow_overlap))
+        else:
+            results[out_name] = float(fn(gt_entities, prediction))
 
     if invalid_metrics:
         valid = ", ".join(sorted({name for name, _ in metric_fns.values()}))

@@ -1,0 +1,262 @@
+{
+  "msf1_protocol": "MSF1-v2-K",
+  "benchmark_mode": "non_overlap",
+  "training_performed": false,
+  "prediction_rule": "One single-sided singleton unit per graph node; uses graph sizes only, no GT groups or alignment pairs.",
+  "records": [
+    {
+      "dataset": "acm-dblp_m2m_gt_many2many",
+      "graph_sizes": [
+        11896,
+        11907
+      ],
+      "num_raw_predictions": 23803,
+      "MSF1": 0.5787449024405545,
+      "NumEntities": 5060.0,
+      "NumPredEntities": 14135.0,
+      "IgnoredPredEntities": 9668.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 9075.0
+    },
+    {
+      "dataset": "airport_m2m_gt_many2many",
+      "graph_sizes": [
+        1563,
+        1554
+      ],
+      "num_raw_predictions": 3117,
+      "MSF1": 0.5803304655195411,
+      "NumEntities": 952.0,
+      "NumPredEntities": 2641.0,
+      "IgnoredPredEntities": 476.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 1689.0
+    },
+    {
+      "dataset": "arenas_m2m_gt_many2many",
+      "graph_sizes": [
+        1488,
+        1495
+      ],
+      "num_raw_predictions": 2983,
+      "MSF1": 0.5796963499056009,
+      "NumEntities": 908.0,
+      "NumPredEntities": 2529.0,
+      "IgnoredPredEntities": 454.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 1621.0
+    },
+    {
+      "dataset": "arxiv_m2m_gt_many2many",
+      "graph_sizes": [
+        24775,
+        24753
+      ],
+      "num_raw_predictions": 49528,
+      "MSF1": 0.5784309093637899,
+      "NumEntities": 15018.0,
+      "NumPredEntities": 42020.0,
+      "IgnoredPredEntities": 7508.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 27002.0
+    },
+    {
+      "dataset": "cora_m2m_gt_many2many",
+      "graph_sizes": [
+        3595,
+        3553
+      ],
+      "num_raw_predictions": 7148,
+      "MSF1": 0.5787571142901091,
+      "NumEntities": 2167.0,
+      "NumPredEntities": 6066.0,
+      "IgnoredPredEntities": 1082.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 3899.0
+    },
+    {
+      "dataset": "dbp15k_fr-en_m2m_gt_many2many",
+      "graph_sizes": [
+        24467,
+        24791
+      ],
+      "num_raw_predictions": 49258,
+      "MSF1": 0.5783224867724868,
+      "NumEntities": 12000.0,
+      "NumPredEntities": 33604.0,
+      "IgnoredPredEntities": 15654.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 21604.0
+    },
+    {
+      "dataset": "dbp15k_ja-en_m2m_gt_many2many",
+      "graph_sizes": [
+        24620,
+        24578
+      ],
+      "num_raw_predictions": 49198,
+      "MSF1": 0.5783224867724868,
+      "NumEntities": 12000.0,
+      "NumPredEntities": 33604.0,
+      "IgnoredPredEntities": 15594.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 21604.0
+    },
+    {
+      "dataset": "dbp15k_zh-en_m2m_gt_many2many",
+      "graph_sizes": [
+        24194,
+        24370
+      ],
+      "num_raw_predictions": 48564,
+      "MSF1": 0.5783224867724868,
+      "NumEntities": 12000.0,
+      "NumPredEntities": 33604.0,
+      "IgnoredPredEntities": 14960.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 21604.0
+    },
+    {
+      "dataset": "douban_m2m_gt_many2many",
+      "graph_sizes": [
+        4265,
+        1460
+      ],
+      "num_raw_predictions": 5725,
+      "MSF1": 0.5787337057728119,
+      "NumEntities": 895.0,
+      "NumPredEntities": 2491.0,
+      "IgnoredPredEntities": 3234.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 1596.0
+    },
+    {
+      "dataset": "flickr-lastfm_m2m_gt_many2many",
+      "graph_sizes": [
+        13115,
+        15582
+      ],
+      "num_raw_predictions": 28697,
+      "MSF1": 0.5789451699423999,
+      "NumEntities": 361.0,
+      "NumPredEntities": 1009.0,
+      "IgnoredPredEntities": 27688.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 648.0
+    },
+    {
+      "dataset": "flickr-myspace_m2m_gt_many2many",
+      "graph_sizes": [
+        6802,
+        10807
+      ],
+      "num_raw_predictions": 17609,
+      "MSF1": 0.5811897344607625,
+      "NumEntities": 214.0,
+      "NumPredEntities": 590.0,
+      "IgnoredPredEntities": 17019.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 376.0
+    },
+    {
+      "dataset": "foursquare-twitter_m2m_gt_many2many",
+      "graph_sizes": [
+        5840,
+        5618
+      ],
+      "num_raw_predictions": 11458,
+      "MSF1": 0.578457433698117,
+      "NumEntities": 1288.0,
+      "NumPredEntities": 3601.0,
+      "IgnoredPredEntities": 7857.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 2313.0
+    },
+    {
+      "dataset": "ggi_m2m_gt_many2many",
+      "graph_sizes": [
+        13752,
+        13674
+      ],
+      "num_raw_predictions": 27426,
+      "MSF1": 0.5784614827147567,
+      "NumEntities": 8323.0,
+      "NumPredEntities": 23266.0,
+      "IgnoredPredEntities": 4160.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 14943.0
+    },
+    {
+      "dataset": "italy_m2m_gt_many2many",
+      "graph_sizes": [
+        1166,
+        1319
+      ],
+      "num_raw_predictions": 2485,
+      "MSF1": 0.5797671607274256,
+      "NumEntities": 302.0,
+      "NumPredEntities": 839.0,
+      "IgnoredPredEntities": 1646.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 537.0
+    },
+    {
+      "dataset": "pems08_m2m_gt_many2many",
+      "graph_sizes": [
+        223,
+        230
+      ],
+      "num_raw_predictions": 453,
+      "MSF1": 0.573062558356676,
+      "NumEntities": 136.0,
+      "NumPredEntities": 385.0,
+      "IgnoredPredEntities": 68.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 249.0
+    },
+    {
+      "dataset": "phone-email_m2m_gt_many2many",
+      "graph_sizes": [
+        1347,
+        1317
+      ],
+      "num_raw_predictions": 2664,
+      "MSF1": 0.5761765873015873,
+      "NumEntities": 800.0,
+      "NumPredEntities": 2261.0,
+      "IgnoredPredEntities": 403.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 1461.0
+    },
+    {
+      "dataset": "ppi_m2m_gt_many2many",
+      "graph_sizes": [
+        4577,
+        4600
+      ],
+      "num_raw_predictions": 9177,
+      "MSF1": 0.5788388295931399,
+      "NumEntities": 2784.0,
+      "NumPredEntities": 7785.0,
+      "IgnoredPredEntities": 1392.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 5001.0
+    },
+    {
+      "dataset": "sacchcere_m2m_gt_many2many",
+      "graph_sizes": [
+        5441,
+        1834
+      ],
+      "num_raw_predictions": 7275,
+      "MSF1": 0.5798116006527222,
+      "NumEntities": 1070.0,
+      "NumPredEntities": 2972.0,
+      "IgnoredPredEntities": 4303.0,
+      "MissingPredEntities": 0.0,
+      "ExtraPredEntities": 1902.0
+    }
+  ],
+  "min_score": 0.573062558356676,
+  "max_score": 0.5811897344607625
+}

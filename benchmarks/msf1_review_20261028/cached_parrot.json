@@ -1,0 +1,276 @@
+{
+  "msf1_protocol": "MSF1-v2-K",
+  "benchmark_mode": "non_overlap",
+  "source": "cached_similarity_redecoded",
+  "training_performed": false,
+  "decoding_performed": true,
+  "metric_sha256": "25e4f601d0e78326b8a6f21da4bac25d7a41418a273eab05b81300f287e76793",
+  "decoder_sha256": "62be0be5f4f7be34fb4ea82314495425f26c328839193725fcdea88623121694",
+  "note": "Three provenance-checked chosen-S caches; Arenas is the historical filename-only raw-S cache, with current anchor temperature arbitration. No aligner was trained.",
+  "records": [
+    {
+      "method": "PARROT",
+      "num_raw_pred_units": 1348,
+      "status": "ok",
+      "MSF1": 0.8274106379148396,
+      "NumEntities": 952.0,
+      "NumPredEntities": 1118.0,
+      "IgnoredPredEntities": 230.0,
+      "MissingPredEntities": 10.0,
+      "ExtraPredEntities": 176.0,
+      "previous_bilateral_max_K_L": 0.7045571800491299,
+      "delta_from_max_K_L": 0.12285345786570967,
+      "dataset": "airport_m2m",
+      "similarity_cache": "logs/m2m_diag/candidate_threshold_cache/airport_m2m__root-11bc9dc12355__data-382eba4d5934__git-f72d2e0785de__base-PARROT__seed-42__full-anchors.pt",
+      "similarity_cache_sha256": "e2570cf0141da78dd6f8d8757e7efeda2baa33e5677cd01ed721476021a66a57",
+      "data_sha256": "382eba4d593497dc2cd8f7700032b247363b2a6a06953b962be8a5461858072e",
+      "gt_file": "data/m2m_no_overlap/airport_m2m_gt_many2many.json",
+      "gt_sha256": "c03f9374726e8d18806cc5060234813d3163c47cf0a4a55a1ad1031dae6fc62f",
+      "predictions_file": "logs/msf1_review_20261028/airport_m2m_parrot_predictions.json",
+      "predictions_sha256": "00273e0a34b0ef1931d6dd964b38f98bdfd1b0e6b3f656be83e178ae9288ac2e",
+      "temperature": null,
+      "cache_data_provenance_verified": true,
+      "overlap_nodes": {
+        "src": 0,
+        "tgt": 0
+      },
+      "duplicate_units": 0,
+      "decode_info": {
+        "taus": [
+          [
+            0.3333,
+            0.3968
+          ],
+          [
+            0.381,
+            0.4127
+          ]
+        ],
+        "group_counts": [
+          [
+            1377,
+            1363
+          ],
+          [
+            1348,
+            1378
+          ]
+        ],
+        "evidence": [
+          [
+            "profile-g@0.333+63",
+            "profile-null@0.199"
+          ],
+          [
+            "profile-g@0.381+109",
+            "profile-null@0.272"
+          ]
+        ],
+        "anchor_agreement": [
+          0.9657,
+          null
+        ],
+        "iters": 2,
+        "matched_groups": 1348
+      }
+    },
+    {
+      "method": "PARROT",
+      "num_raw_pred_units": 2724,
+      "status": "ok",
+      "MSF1": 0.979980630557465,
+      "NumEntities": 2167.0,
+      "NumPredEntities": 2201.0,
+      "IgnoredPredEntities": 523.0,
+      "MissingPredEntities": 1.0,
+      "ExtraPredEntities": 35.0,
+      "previous_bilateral_max_K_L": 0.9648423563916523,
+      "delta_from_max_K_L": 0.015138274165812704,
+      "dataset": "cora_m2m",
+      "similarity_cache": "logs/m2m_diag/candidate_threshold_cache/cora_m2m__root-11bc9dc12355__data-8ec1bd78cf68__git-f72d2e0785de__base-PARROT__seed-42__full-anchors.pt",
+      "similarity_cache_sha256": "9a688bcaba72be1af5943e2816781cc75b7c172f3bb1323e21cfcb483fd4a6a3",
+      "data_sha256": "8ec1bd78cf681cefac5848969c59af44430c80bff1db4429d5dd180a2f430bbc",
+      "gt_file": "data/m2m_no_overlap/cora_m2m_gt_many2many.json",
+      "gt_sha256": "d611c7d5efb594be1ae2789b3ff0f8b2beca90bc865171524a618ddf09075df9",
+      "predictions_file": "logs/msf1_review_20261028/cora_m2m_parrot_predictions.json",
+      "predictions_sha256": "3c9c06b295384ee333dcc1cae3f7b7580c9da1b3689bf3b52bb582d61581cceb",
+      "temperature": 0.05,
+      "cache_data_provenance_verified": true,
+      "overlap_nodes": {
+        "src": 0,
+        "tgt": 0
+      },
+      "duplicate_units": 0,
+      "decode_info": {
+        "taus": [
+          [
+            0.6,
+            0.1
+          ],
+          [
+            0.6,
+            0.1
+          ]
+        ],
+        "group_counts": [
+          [
+            2724,
+            2731
+          ],
+          [
+            2724,
+            2731
+          ]
+        ],
+        "evidence": [
+          [
+            "attr",
+            "attr"
+          ],
+          [
+            "attr",
+            "attr"
+          ]
+        ],
+        "anchor_agreement": [
+          0.9646,
+          null
+        ],
+        "iters": 2,
+        "matched_groups": 2724
+      }
+    },
+    {
+      "method": "PARROT",
+      "num_raw_pred_units": 2587,
+      "status": "ok",
+      "MSF1": 0.6458742875045865,
+      "NumEntities": 895.0,
+      "NumPredEntities": 1218.0,
+      "IgnoredPredEntities": 1369.0,
+      "MissingPredEntities": 29.0,
+      "ExtraPredEntities": 352.0,
+      "previous_bilateral_max_K_L": 0.47459563819097283,
+      "delta_from_max_K_L": 0.1712786493136137,
+      "dataset": "douban_m2m",
+      "similarity_cache": "logs/m2m_diag/candidate_threshold_cache/douban_m2m__root-11bc9dc12355__data-08da98d000dc__git-f72d2e0785de__base-PARROT__seed-42__full-anchors.pt",
+      "similarity_cache_sha256": "a2d2079ab8398869aeb037b7e44c8a33caaac4c212b29cd157703700ce42a94a",
+      "data_sha256": "08da98d000dcb8c69c3982abaf2e348a88e183b01ecce68a9faa9adbbdf8861a",
+      "gt_file": "data/m2m_no_overlap/douban_m2m_gt_many2many.json",
+      "gt_sha256": "9f1a517eb6cc124a4200b320d1317eb4decc7c3a2585f917f5f0a9a9ce3e4c86",
+      "predictions_file": "logs/msf1_review_20261028/douban_m2m_parrot_predictions.json",
+      "predictions_sha256": "8fba804f7889cf6dc488bf26b6df8257d13bd21b80da617e9853dff3538522b2",
+      "temperature": null,
+      "cache_data_provenance_verified": true,
+      "overlap_nodes": {
+        "src": 0,
+        "tgt": 0
+      },
+      "duplicate_units": 0,
+      "decode_info": {
+        "taus": [
+          [
+            0.4127,
+            0.4444
+          ],
+          [
+            0.4286,
+            0.4444
+          ]
+        ],
+        "group_counts": [
+          [
+            2632,
+            1205
+          ],
+          [
+            2587,
+            1200
+          ]
+        ],
+        "evidence": [
+          [
+            "profile-g@0.413+1854",
+            "profile-g@0.444+200"
+          ],
+          [
+            "profile-g@0.429+2085",
+            "profile-g@0.444+222"
+          ]
+        ],
+        "anchor_agreement": [
+          0.9859,
+          null
+        ],
+        "iters": 2,
+        "matched_groups": 1200
+      }
+    },
+    {
+      "method": "PARROT",
+      "num_raw_pred_units": 1169,
+      "status": "ok",
+      "MSF1": 0.8869195651145059,
+      "NumEntities": 908.0,
+      "NumPredEntities": 942.0,
+      "IgnoredPredEntities": 227.0,
+      "MissingPredEntities": 41.0,
+      "ExtraPredEntities": 75.0,
+      "previous_bilateral_max_K_L": 0.854907606288717,
+      "delta_from_max_K_L": 0.03201195882578889,
+      "dataset": "arenas_m2m",
+      "similarity_cache": "logs/m2m_diag/S_cache/arenas_m2m_base-PARROT_e-full_s42_fa.pt",
+      "similarity_cache_sha256": "833c49a477c72d4496cf6081acc27d67b18e51a6db515fd643bc0b72ccb0e2d6",
+      "data_sha256": "a36e4a02f6f07846b9745a3acc30cde501e2999bd856ad9a0be18e8cb02ea49d",
+      "gt_file": "data/m2m_no_overlap/arenas_m2m_gt_many2many.json",
+      "gt_sha256": "5fbff2461d163a113695eab1e61900f814c6c575f6d87628a2bbed772f8fe3c7",
+      "predictions_file": "logs/msf1_review_20261028/arenas_m2m_parrot_predictions.json",
+      "predictions_sha256": "3d0ebcd34ba57a1b06729d4e94f7df7f600f489179ad9af1636b9c66c373079f",
+      "temperature": null,
+      "cache_data_provenance_verified": false,
+      "overlap_nodes": {
+        "src": 0,
+        "tgt": 0
+      },
+      "duplicate_units": 0,
+      "decode_info": {
+        "taus": [
+          [
+            0.3333,
+            0.3492
+          ],
+          [
+            0.4286,
+            0.4444
+          ]
+        ],
+        "group_counts": [
+          [
+            1169,
+            1204
+          ],
+          [
+            1169,
+            1216
+          ]
+        ],
+        "evidence": [
+          [
+            "profile-null@0.120",
+            "profile-null@0.182"
+          ],
+          [
+            "profile-null@0.147",
+            "profile-null@0.537"
+          ]
+        ],
+        "anchor_agreement": [
+          0.9993,
+          null
+        ],
+        "iters": 2,
+        "matched_groups": 1169
+      }
+    }
+  ]
+}

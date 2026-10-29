@@ -11,7 +11,8 @@ from typing import Dict, List, Mapping, Sequence
 
 import torch
 
-from PlanetAlign.metrics import global_set_f1, macro_set_f1
+from PlanetAlign.metrics import global_set_f1
+from PlanetAlign.metrics.metrics_MSF1 import f1_from_sets
 
 
 EntityMap = Dict[str, Dict[str, List[int]]]
@@ -83,11 +84,16 @@ def oracle_grouped_topk_target_metrics(
 ) -> Dict[str, float]:
     """Return only target-side metrics appropriate for the oracle diagnostic."""
 
-    macro = macro_set_f1(gt_entities, pred_entities, key=target_key)
+    # 目标侧 oracle 诊断保持原来的按编号宏平均，不改成双侧、重新匹配的 MSF1-v2。
+    target_f1 = [
+        f1_from_sets(pred_entities.get(eid, {}).get(target_key, []), gt_entities[eid].get(target_key, []))[0]
+        for eid in sorted(gt_entities)
+    ]
+    macro = sum(target_f1) / len(target_f1) if target_f1 else 0.0
     micro = global_set_f1(gt_entities, pred_entities, key=target_key)
     return {
         f"{ORACLE_GROUPED_TOPK_PREFIX}Target-MicroF1": float(micro["F1"]),
-        f"{ORACLE_GROUPED_TOPK_PREFIX}Target-MSF1": float(macro["MSF1"]),
+        f"{ORACLE_GROUPED_TOPK_PREFIX}Target-MSF1": float(macro),
         f"{ORACLE_GROUPED_TOPK_PREFIX}Target-Recall@GT-K": float(micro["Recall"]),
     }
 

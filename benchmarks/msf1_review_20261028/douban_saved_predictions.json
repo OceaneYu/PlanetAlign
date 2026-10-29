@@ -1,0 +1,39 @@
+{
+  "msf1_protocol": "MSF1-v2-K",
+  "benchmark_mode": "non_overlap",
+  "source": "saved_predictions",
+  "training_performed": false,
+  "decoding_performed": false,
+  "gt_file": "/Users/yukexin/Documents/akeyan/code/PlanetAlign/data/m2m_no_overlap/douban_m2m_gt_many2many.json",
+  "gt_sha256": "9f1a517eb6cc124a4200b320d1317eb4decc7c3a2585f917f5f0a9a9ce3e4c86",
+  "predictions_file": "/Users/yukexin/Documents/akeyan/code/PlanetAlign/logs/m2m_diag/gadl_m2m_backbone_douban_no_overlap_seed42_predictions.json",
+  "predictions_sha256": "c7bb3f8b8bbb0bf223284f1212f228cead58cc8b0d86947044d1f4502c378e06",
+  "records": [
+    {
+      "method": "GADL",
+      "num_raw_pred_units": 1373,
+      "status": "ok",
+      "MSF1": 0.33737142433574924,
+      "NumEntities": 895.0,
+      "NumPredEntities": 651.0,
+      "IgnoredPredEntities": 722.0,
+      "MissingPredEntities": 314.0,
+      "ExtraPredEntities": 70.0,
+      "previous_bilateral_max_K_L": 0.33737142433574924,
+      "delta_from_max_K_L": 0.0
+    },
+    {
+      "method": "JOENA",
+      "num_raw_pred_units": 2333,
+      "status": "ok",
+      "MSF1": 0.46862701133871554,
+      "NumEntities": 895.0,
+      "NumPredEntities": 669.0,
+      "IgnoredPredEntities": 1664.0,
+      "MissingPredEntities": 315.0,
+      "ExtraPredEntities": 89.0,
+      "previous_bilateral_max_K_L": 0.46862701133871554,
+      "delta_from_max_K_L": 0.0
+    }
+  ]
+}

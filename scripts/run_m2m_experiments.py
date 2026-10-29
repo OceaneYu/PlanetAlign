@@ -68,6 +68,7 @@ from PlanetAlign.m2m.diagnostics import (
 )
 from PlanetAlign.m2m import evaluate_predictions
 from PlanetAlign.m2m.quotient import quotient_decode
+from PlanetAlign.metrics import InvalidPredictionError, MSF1_PROTOCOL
 from PlanetAlign.utils import get_anchor_pairs, pairwise_cosine_similarity
 
 
@@ -81,6 +82,8 @@ CSV_FIELDS = [
     "profile",
     "time_s",
     "m2m_protocol",
+    "msf1_protocol",
+    "allow_overlap",
     "Blind-Macro Set-F1",
     "Blind-Micro Set-F1",
     "Blind-AUIS",
@@ -404,12 +407,15 @@ def evaluate_algorithm(
     verbose: bool,
     auto_disable_attr: bool,
     include_oracle_diagnostic: bool = False,
+    allow_overlap: bool = False,
 ) -> Dict[str, Any]:
     record: Dict[str, Any] = {
         "dataset": dataset_name,
         "algorithm": algo_name,
         "status": "pending",
         "profile": profile,
+        "msf1_protocol": MSF1_PROTOCOL,
+        "allow_overlap": allow_overlap,
     }
 
     if "skip" in config:
@@ -456,7 +462,8 @@ def evaluate_algorithm(
             anchors=anchors,
         )
         # 评估：只在预测完成后使用真实答案；输出字段仍沿用原来的 Blind- 前缀。
-        blind_scores = evaluate_predictions(gt_entities, pred, metrics=M2M_METRICS)
+        blind_scores = evaluate_predictions(gt_entities, pred, metrics=M2M_METRICS,
+                                            allow_overlap=allow_overlap)
 
         logged_train_kwargs = dict(train_kwargs)
 
@@ -483,7 +490,7 @@ def evaluate_algorithm(
         logged_train_kwargs = dict(train_kwargs)
         record.update(
             {
-                "status": "error",
+                "status": "invalid_prediction" if isinstance(exc, InvalidPredictionError) else "error",
                 "time_s": round(time.perf_counter() - started, 4),
                 "train_kwargs": logged_train_kwargs,
                 "error": f"{type(exc).__name__}: {exc}",
@@ -626,6 +633,7 @@ def main() -> int:
                 verbose=args.verbose,
                 auto_disable_attr=not args.no_auto_disable_attr,
                 include_oracle_diagnostic=args.include_oracle_diagnostic,
+                allow_overlap=gt_payload.get("metadata", {}).get("overlap_ratio", 0.0) > 0,
             )
             records.append(record)
             status = record["status"]

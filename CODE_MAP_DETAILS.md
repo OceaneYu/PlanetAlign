@@ -113,15 +113,15 @@ python scripts/run_quotient_compare.py --root data/m2m_no_overlap --dataset ppi_
 
 ### 4.5 对齐编号、计算指标、保存结果
 
-`main()` 得到 `pred` 和 `info` 后，单独调用 [PlanetAlign/m2m/core.py](PlanetAlign/m2m/core.py) → `evaluate_predictions(gt, pred)`；评分函数不执行解码，内部调用：
+`main()` 得到 `pred` 和 `info` 后，单独调用 [PlanetAlign/m2m/core.py](PlanetAlign/m2m/core.py) → `evaluate_predictions(gt, pred)`；评分函数不执行解码，区分原始预测与供其他指标使用的编号适配结果：
 
 [PlanetAlign/m2m/core.py](PlanetAlign/m2m/core.py) → `align_prediction_to_ground_truth(gt, pred)`
 
-→ [PlanetAlign/metrics/many_to_many.py](PlanetAlign/metrics/many_to_many.py) → `many_to_many_scores(gt, aligned)`
+→ [PlanetAlign/metrics/many_to_many.py](PlanetAlign/metrics/many_to_many.py) → `many_to_many_scores(gt, pred, aligned_pred_entities=aligned)`
 
 → `PlanetAlign/metrics/metrics_MSF1.py → macro_f1_score()`、`PlanetAlign/metrics/metrics_Micro_SF1.py → micro_f1_score()`、`PlanetAlign/metrics/metrics_AUIS.py → auis_score()`、`PlanetAlign/metrics/metrics_AUCS.py → aucs_score()`。
 
-编号适配器根据节点重叠将任意预测组编号对应到真实编号，这是**评估操作**，不是预测的一部分。Set-F1 比较各实体的目标节点集合；AUIS、AUCS 从不同角度评价分组。`evaluate_predictions()` 只返回 `scores`。
+编号适配器仍为 Micro-SF1、AUIS、AUCS 保留旧行为。新版 MSF1 绕过它，用原始预测的双侧成员 F1 全局匹配；只纳入含测试节点的组，但保留其全部成员，按固定真实组数 K 平均；默认拒绝同侧节点跨组复用，重叠基准需显式设置 allow_overlap=True。`evaluate_predictions()` 只返回 `scores`，历史 MSF1 不可直接比较，详细边界见 [docs/MSF1.md](docs/MSF1.md)。
 
 所有实验调用方统一先用 `quotient_decode()` 生成 `pred、info`，再用 `evaluate_predictions()` 规范化实体、对应编号并返回 `scores`；没有组合包装函数。
 

@@ -1,7 +1,7 @@
 # 文件作用：统一实体字典格式，提供数据读写、训练锚点恢复和预测评分的辅助接口。
 # 数据来源：基准接口读 .pt/JSON；实验入口将真实与预测分组传给 evaluate_predictions() 评分。
-# 结果去向：align_prediction_to_ground_truth() 返回编号对应后的预测，由调用方传给 PlanetAlign/metrics/many_to_many.py → many_to_many_scores()。
-# 阅读建议：主线开始看 use_full_anchor_supervision()，评分时看 align_prediction_to_ground_truth()；它们发生在不同阶段。
+# 结果去向：evaluate_predictions() 将原始组交给 MSF1，将编号适配结果交给其余指标；由 PlanetAlign/metrics/many_to_many.py 汇总。
+# 阅读建议：训练前看 use_full_anchor_supervision()，评分先看 evaluate_predictions() 的输入分流，再看旧编号适配。
 
 """Reusable interfaces for many-to-many graph alignment research.
 
@@ -122,6 +122,8 @@ def normalize_entity_map(
             raise TypeError(f"entity {raw_eid!r} must map side names to node lists")
 
         eid = str(raw_eid)
+        if eid in normalized:
+            raise ValueError(f"entity ids collide after string normalization: {raw_eid!r}")
         normalized[eid] = {}
         for side in sides:
             if side not in item:
@@ -272,7 +274,7 @@ def _entity_nodes(item: Mapping[str, Iterable[int]], sides: Sequence[str]) -> se
 # 流程位置：预测已完成后，为评分对应真实组和预测组的编号，不重新给节点分组。
 # 输入来源：evaluate_predictions() 等评分调用方传入真实与预测实体字典。
 # 核心思路：按共有成员多少排序，每个真实组与预测组至多对应一次；漏预测补空，额外预测保留。
-# 输出结果：对应编号后的预测交回调用方，再由 PlanetAlign/metrics/many_to_many.py → many_to_many_scores() 评分。
+# 输出结果：编号适配结果供 Micro-SF1、AUIS、AUCS 评分；MSF1-v2 不使用此结果。
 def align_prediction_to_ground_truth(
     gt_entities: Mapping[str, Mapping[str, Iterable[int]]],
     pred_entities: Mapping[str, Mapping[str, Iterable[int]]],
@@ -280,7 +282,7 @@ def align_prediction_to_ground_truth(
 ) -> EntityMap:
     """Relabel predicted group ids by node-overlap with GT groups.
 
-    The Set-F1 metrics are keyed by entity id, while
+    Micro Set-F1 is keyed by entity id, while
     many group discovery methods produce arbitrary cluster ids. This adapter
     performs a one-to-one greedy matching from predicted groups to GT groups so
     that a pure group-id permutation does not lower keyed metrics. Unmatched
@@ -328,7 +330,7 @@ def align_prediction_to_ground_truth(
     return aligned
 
 
-# 功能：只对已有预测评分，不生成预测；规范化实体后，按选项对应编号或补齐预测。
+# 功能：只评分已有预测；MSF1 用原始组，其他指标仍按选项对应编号或补齐预测。
 # 输入输出：接收真实实体 gt_entities、预测实体 pred_entities 和指标选项，返回 scores 分数字典。
 # 调用关系：scripts/run_quotient_compare.py → main() 在预测后调用；内部交给 PlanetAlign/metrics/many_to_many.py → many_to_many_scores()。
 def evaluate_predictions(
@@ -337,15 +339,23 @@ def evaluate_predictions(
     metrics: Optional[Iterable[str]] = None,
     sides: Sequence[str] = DEFAULT_ENTITY_SIDES,
     match_entities: bool = True,
+    *,
+    allow_overlap: bool = False,
 ) -> Dict[str, float]:
-    """Evaluate explicit many-to-many group predictions."""
+    """Evaluate explicit group predictions; MSF1 defaults to non-overlapping units.
+
+    Pass allow_overlap=True only for an overlapping benchmark. Invalid MSF1
+    predictions raise InvalidPredictionError instead of being repaired.
+    """
 
     gt = normalize_entity_map(gt_entities, sides=sides)
+    raw_pred = normalize_entity_map(pred_entities, sides=sides)
     if match_entities:
-        pred = align_prediction_to_ground_truth(gt, pred_entities, sides=sides)
+        pred = align_prediction_to_ground_truth(gt, raw_pred, sides=sides)
     else:
-        pred = complete_prediction_entities(gt, pred_entities, sides=sides, keep_extra=True)
-    return many_to_many_scores(gt, pred, metrics=metrics)
+        pred = complete_prediction_entities(gt, raw_pred, sides=sides, keep_extra=True)
+    return many_to_many_scores(gt, raw_pred, metrics=metrics, aligned_pred_entities=pred,
+                               allow_overlap=allow_overlap)
 
 
 __all__ = [

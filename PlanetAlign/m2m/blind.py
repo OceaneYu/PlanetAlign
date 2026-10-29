@@ -270,7 +270,7 @@ def blind_predict(
     return decode_entity_map(S, src_groups, tgt_groups, threshold, relative_threshold)
 
 
-# 功能：先 blind_predict()，再调用 PlanetAlign/m2m/core.py → align_prediction_to_ground_truth() 与指标入口评分。
+# 功能：先 blind_predict()；MSF1 用原始预测，其他指标沿用 PlanetAlign/m2m/core.py → align_prediction_to_ground_truth() 的结果。
 # 输出结果：分数字典，按选项还返回未经编号适配的预测。
 def evaluate_blind(
     similarity: torch.Tensor,
@@ -284,6 +284,8 @@ def evaluate_blind(
     threshold: float = 0.0,
     relative_threshold: float = 0.0,
     return_predictions: bool = False,
+    *,
+    allow_overlap: bool = False,
 ) -> Union[Dict[str, float], Tuple[Dict[str, float], EntityMap]]:
     """Blind M2M evaluation: the method self-produces groups, then is scored.
 
@@ -296,7 +298,8 @@ def evaluate_blind(
         threshold=threshold, relative_threshold=relative_threshold,
     )
     aligned = align_prediction_to_ground_truth(gt_entities, pred)
-    scores = many_to_many_scores(gt_entities, aligned, metrics=metrics)
+    scores = many_to_many_scores(gt_entities, pred, metrics=metrics, aligned_pred_entities=aligned,
+                                allow_overlap=allow_overlap)
     if return_predictions:
         return scores, pred
     return scores

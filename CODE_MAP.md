@@ -63,8 +63,8 @@ python scripts/run_quotient_compare.py --root data/m2m_no_overlap --dataset doub
 
 ## 6. 评分和保存：最后才拿预测与答案比较
 
-- **打开哪里：** 入口接着调用 [PlanetAlign/m2m/core.py](PlanetAlign/m2m/core.py) 的 `evaluate_predictions(gt, pred)`。它只评分，内部用 `align_prediction_to_ground_truth()` 对应组编号，因为预测组名 p0 等不一定与答案编号相同。
-- **得到什么：** 编号适配后，调用 [PlanetAlign/metrics/many_to_many.py](PlanetAlign/metrics/many_to_many.py) 的 `many_to_many_scores()` 得到 `scores` 分数字典。Set-F1 检查预测目标节点集合是否漏了或多了；AUIS/AUCS 检查真实组的成员是否被分散。
+- **打开哪里：** 入口接着调用 [PlanetAlign/m2m/core.py](PlanetAlign/m2m/core.py) 的 `evaluate_predictions(gt, pred)`。MSF1 直接使用原始预测；Micro-SF1、AUIS、AUCS 继续使用 `align_prediction_to_ground_truth()` 的旧编号适配结果。
+- **得到什么：** `many_to_many_scores()` 返回 `scores`。新版 MSF1 用双侧成员 F1 全局匹配，分母固定为真实测试 unit 数 K，混入的范围外成员计 FP；纯训练/背景组不评分。默认拒绝同侧节点跨预测组复用；重叠基准显式设置 allow_overlap=True。Micro-SF1、AUIS、AUCS 不变，历史 MSF1 不可直接比较，详见 [评分协议](docs/MSF1.md)。
 - **交给谁：** `evaluate_predictions()` 只返回 `scores`；`pred`、`info` 已由预测阶段得到。`main()` 内的 `add()` 收集分数，最后写入 `--out` 或 `logs/m2m_diag/quotient_compare_*.json`，只保存评分与记录，不保存 `pred`。
 
 ## 建议这样读，第一遍不用钻进所有辅助函数
