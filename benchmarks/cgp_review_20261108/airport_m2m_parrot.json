@@ -1,0 +1,28 @@
+{
+  "protocol": "CGP-v1",
+  "benchmark_mode": "non_overlap",
+  "source": "saved_original_predictions",
+  "training_performed": false,
+  "decoding_performed": false,
+  "gt_file": "/Users/yukexin/Documents/akeyan/code/PlanetAlign/data/m2m_no_overlap/airport_m2m_gt_many2many.json",
+  "gt_sha256": "c03f9374726e8d18806cc5060234813d3163c47cf0a4a55a1ad1031dae6fc62f",
+  "predictions_file": "/Users/yukexin/Documents/akeyan/code/PlanetAlign/logs/msf1_review_20261028/airport_m2m_parrot_predictions.json",
+  "predictions_sha256": "00273e0a34b0ef1931d6dd964b38f98bdfd1b0e6b3f656be83e178ae9288ac2e",
+  "num_evaluated": 1,
+  "num_not_evaluated": 0,
+  "records": [
+    {
+      "method": "prediction",
+      "num_raw_pred_units": 1348,
+      "status": "ok",
+      "CGP-P": 0.6063583815028901,
+      "CGP-R": 0.508482792050412,
+      "CGP-F1": 0.553124176113894,
+      "TP": 1049,
+      "FP": 681,
+      "FN": 1014,
+      "NumGTPairs": 2063,
+      "NumPredPairs": 1730
+    }
+  ]
+}

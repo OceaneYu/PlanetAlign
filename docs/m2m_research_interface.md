@@ -108,6 +108,27 @@ AUCS
 
 `Macro Set-F1` is now **MSF1-v2**: globally matched bilateral unit-member F1, divided by the fixed number of true test units `K` (`MSF1-v2-K`). By default, same-side nodes shared by different prediction units raise `InvalidPredictionError`, including duplicates and out-of-scope groups. Overlapping benchmarks must explicitly pass `allow_overlap=True`; this separate mode retains its duplicate-prediction limitation. A prediction participates only if it contains a test GT node, but its entire source/target membership is retained, including wrong training/background members. Purely out-of-scope groups are ignored. MSF1 uses raw predictions; the other metrics retain their previous entity-id adaptation. Historical MSF1 results are not directly comparable. See [the exact protocol and examples](MSF1.md).
 
+### Optional cross-graph pair evaluation
+
+CGP-v1 applies standard precision/recall/F1 to cross-graph relations from the
+original predicted units, without unit matching. It supports non-overlapping
+benchmarks only and is not added to the existing default metric list.
+
+```python
+from PlanetAlign.metrics import cross_graph_pair_scores
+
+details = cross_graph_pair_scores(gt_entities, pred_entities)
+scores = evaluate_predictions(
+    gt_entities, pred_entities, metrics=["CGP-P", "CGP-R", "CGP-F1"]
+)
+```
+
+The detailed API returns the three scores and integer `TP`, `FP`, `FN`,
+`NumGTPairs`, `NumPredPairs`. A predicted relation participates when **either**
+its source is a GT source node **or** its target is a GT target node. Empty GT
+relations raise `NoEvaluableRelationsError`, not a normal zero performance
+score. See [CGP's exact protocol and saved-prediction scoring](CGP.md).
+
 ## Similarity-producing Baselines
 
 An existing or new alignment model can participate by producing `self.S`, a

@@ -1,0 +1,41 @@
+{
+  "protocol": "CGP-v1",
+  "benchmark_mode": "non_overlap",
+  "source": "saved_original_predictions",
+  "training_performed": false,
+  "decoding_performed": false,
+  "gt_file": "/Users/yukexin/Documents/akeyan/code/PlanetAlign/data/m2m_no_overlap/douban_m2m_gt_many2many.json",
+  "gt_sha256": "9f1a517eb6cc124a4200b320d1317eb4decc7c3a2585f917f5f0a9a9ce3e4c86",
+  "predictions_file": "/Users/yukexin/Documents/akeyan/code/PlanetAlign/logs/m2m_diag/gadl_m2m_backbone_douban_no_overlap_seed42_predictions.json",
+  "predictions_sha256": "c7bb3f8b8bbb0bf223284f1212f228cead58cc8b0d86947044d1f4502c378e06",
+  "num_evaluated": 2,
+  "num_not_evaluated": 0,
+  "records": [
+    {
+      "method": "GADL",
+      "num_raw_pred_units": 1373,
+      "status": "ok",
+      "CGP-P": 0.02661290322580645,
+      "CGP-R": 0.034392912975508075,
+      "CGP-F1": 0.030006819731757218,
+      "TP": 66,
+      "FP": 2414,
+      "FN": 1853,
+      "NumGTPairs": 1919,
+      "NumPredPairs": 2480
+    },
+    {
+      "method": "JOENA",
+      "num_raw_pred_units": 2333,
+      "status": "ok",
+      "CGP-P": 0.13546126897625535,
+      "CGP-R": 0.36268890046899427,
+      "CGP-F1": 0.1972509564970951,
+      "TP": 696,
+      "FP": 4442,
+      "FN": 1223,
+      "NumGTPairs": 1919,
+      "NumPredPairs": 5138
+    }
+  ]
+}

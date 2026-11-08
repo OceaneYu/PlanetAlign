@@ -42,6 +42,7 @@ import torch
 import torch.nn.functional as F
 
 from PlanetAlign.metrics import many_to_many_scores
+from PlanetAlign.metrics.many_to_many import _is_cgp_metric
 from PlanetAlign.m2m import align_prediction_to_ground_truth, EntityMap
 
 
@@ -297,8 +298,10 @@ def evaluate_blind(
         use_attr=use_attr, attr_tau=attr_tau, struct_tau=struct_tau,
         threshold=threshold, relative_threshold=relative_threshold,
     )
-    aligned = align_prediction_to_ground_truth(gt_entities, pred)
-    scores = many_to_many_scores(gt_entities, pred, metrics=metrics, aligned_pred_entities=aligned,
+    requested = None if metrics is None else tuple(metrics)
+    cgp_only = requested and all(_is_cgp_metric(m) for m in requested)
+    aligned = None if cgp_only else align_prediction_to_ground_truth(gt_entities, pred)
+    scores = many_to_many_scores(gt_entities, pred, metrics=requested, aligned_pred_entities=aligned,
                                 allow_overlap=allow_overlap)
     if return_predictions:
         return scores, pred

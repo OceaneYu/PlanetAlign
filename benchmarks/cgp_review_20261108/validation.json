@@ -1,0 +1,77 @@
+{
+  "protocol": "CGP-v1",
+  "date": "2026-11-08",
+  "source_commit": "14867d949925f8fb141d98a183e9dca772de5ff1",
+  "tests": {
+    "related_tests_run": 133,
+    "failures": 0,
+    "errors": 0,
+    "previous_regression_tests": 101,
+    "new_cgp_tests": 32,
+    "random_non_overlap_set_reference_cases": 1000,
+    "largest_test_cartesian_product": 4900000000,
+    "patterns": [
+      "test_cross_graph_pairs.py",
+      "test_rescore_cgp.py",
+      "test_macro_set_f1.py",
+      "test_rescore_msf1.py",
+      "test_m2m*.py",
+      "test_many_to_many_metrics.py"
+    ],
+    "python": "/opt/miniconda3/envs/m2m/bin/python"
+  },
+  "saved_prediction_checks": [
+    {
+      "report": "benchmarks/cgp_review_20261108/airport_m2m_parrot.json",
+      "method": "prediction",
+      "explicit_set_reference_equal": true,
+      "raw_pair_count_upper_bound": 1960
+    },
+    {
+      "report": "benchmarks/cgp_review_20261108/arenas_m2m_parrot.json",
+      "method": "prediction",
+      "explicit_set_reference_equal": true,
+      "raw_pair_count_upper_bound": 2226
+    },
+    {
+      "report": "benchmarks/cgp_review_20261108/cora_m2m_parrot.json",
+      "method": "prediction",
+      "explicit_set_reference_equal": true,
+      "raw_pair_count_upper_bound": 5283
+    },
+    {
+      "report": "benchmarks/cgp_review_20261108/douban_gadl_joena.json",
+      "method": "GADL",
+      "explicit_set_reference_equal": true,
+      "raw_pair_count_upper_bound": 2750
+    },
+    {
+      "report": "benchmarks/cgp_review_20261108/douban_gadl_joena.json",
+      "method": "JOENA",
+      "explicit_set_reference_equal": true,
+      "raw_pair_count_upper_bound": 5645
+    },
+    {
+      "report": "benchmarks/cgp_review_20261108/douban_m2m_parrot.json",
+      "method": "prediction",
+      "explicit_set_reference_equal": true,
+      "raw_pair_count_upper_bound": 3541
+    }
+  ],
+  "protected_files_unchanged_sha256": {
+    "PlanetAlign/metrics/metrics_MSF1.py": "25e4f601d0e78326b8a6f21da4bac25d7a41418a273eab05b81300f287e76793",
+    "PlanetAlign/metrics/metrics_Micro_SF1.py": "af07976e51349b5e96d9b4eac4152dba537616fe42c939eaafd62ccbec29739c",
+    "PlanetAlign/metrics/metrics_AUIS.py": "c40fdfc2163048ba7639c7302a97920fa63bd5f0c99aca40bf11c9a454fcde3a",
+    "PlanetAlign/metrics/metrics_AUCS.py": "9e42d9ca37dbbc6e3e6260bbb1578d57803e7e4544ea8121fef6f72d87376744",
+    "PlanetAlign/m2m/quotient.py": "62be0be5f4f7be34fb4ea82314495425f26c328839193725fcdea88623121694",
+    "PlanetAlign/m2m/base.py": "da410e5b3e5fb668007db8d007821e76519892f5ee68218dddf588521ad88321",
+    "PlanetAlign/m2m/diagnostics.py": "6b206eeab218688ebbac2199e722d88940d8712e6270c2b82e8bc64428a8c749",
+    "scripts/rescore_msf1.py": "298c8b7c9df61cb1b7cb17068f90e5c27e3116870116459f1245dcdcbca70cf3",
+    "docs/MSF1.md": "984cf27fa454ef0e7ee815df319af1f262a3fa6427b96c873787c7dfc746e4e1"
+  },
+  "blind_prediction_functions_unchanged": true,
+  "training_algorithms_unchanged": true,
+  "experiment_training_performed": false,
+  "experiment_decoding_performed": false,
+  "missing_prediction_files": []
+}

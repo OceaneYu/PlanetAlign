@@ -12,6 +12,10 @@ from .metrics_MSF1 import InvalidPredictionError, MSF1_PROTOCOL, macro_f1_score,
 from .metrics_Micro_SF1 import global_set_f1, micro_f1_score
 from .metrics_AUCS import aucs_score, weighted_aucs_score
 from .metrics_AUIS import auis_score, weighted_auis_score
+from .metrics_CGP import (
+    CGP_PROTOCOL, CGP_METRICS, NoEvaluableRelationsError,
+    UnsupportedCGPOverlapError, cross_graph_pair_scores,
+)
 from .many_to_many import (
     DEFAULT_MANY_TO_MANY_METRICS,
     many_to_many_scores,
@@ -35,6 +39,11 @@ __all__ = [
     'global_set_f1',
     'DEFAULT_MANY_TO_MANY_METRICS',
     'many_to_many_scores',
+    'cross_graph_pair_scores',
+    'CGP_PROTOCOL',
+    'CGP_METRICS',
+    'NoEvaluableRelationsError',
+    'UnsupportedCGPOverlapError',
 ]
 
 classes = copy.copy(__all__)

@@ -6,13 +6,15 @@
 
 ## 测试分布
 
-当前共 **140 项**测试；本轮覆盖固定 K、非重叠提交校验、显式重叠模式与无需训练的预测重评分。MSF1 的独立穷举测试还包含 400 个随机小例。
+当前共 **172 项**测试。CGP-v1 新增 32 项测试，其中包含 1,000 个随机非重叠小例的显式关系集合对照；此前 MSF1 的固定 K、非重叠提交校验和 400 个随机穷举小例保留。
 
 | 文件 | 当前数量 | 主要检查 |
 |---|---:|---|
 | [test_m2m_quotient.py](test_m2m_quotient.py) | 25 | 分组阈值、防止串联合并、组匹配、锚点选择、预测与评分分离 |
 | [test_macro_set_f1.py](test_macro_set_f1.py) | 29 | 固定 K、非法重叠/重复、双侧 F1、范围、全局匹配、随机穷举、解码器与 API 隔离 |
 | [test_rescore_msf1.py](test_rescore_msf1.py) | 5 | 保存预测的重评分、非法状态、模式校验、保护原始输入与旧结果 |
+| [test_cross_graph_pairs.py](test_cross_graph_pairs.py) | 25 | CGP 关系计数、或范围、集合对照、非法复用、大笛卡尔积和 API 隔离 |
+| [test_rescore_cgp.py](test_rescore_cgp.py) | 7 | 原始预测重评分、无真实关系跳过、重叠不支持、缺失输入与历史输出保护 |
 | [test_m2m_base.py](test_m2m_base.py) | 7 | 矩阵锐化、用训练锚点选矩阵、基础算法配置 |
 | [test_m2m_blind.py](test_m2m_blind.py) | 3 | 属性分组、简单解码和不依赖真实答案的预测 |
 | [test_m2m_fgw.py](test_m2m_fgw.py) | 4 | FGW 组匹配及特殊参数、矩阵形状 |
@@ -58,3 +60,10 @@ env PYTHONPATH="/tmp/planetalign-refactor-deps:$PWD" PYTHONDONTWRITEBYTECODE=1 M
 测试面板同样需要依赖齐全的解释器；终端的临时 `PYTHONPATH` 不会自动设置到测试面板。缺包导致导入失败时，先处理环境，再判断是否有代码问题。
 
 2026-10-28 的 MSF1 定稿修正验证使用 `/opt/miniconda3/envs/m2m/bin/python`，该环境依赖齐全，无需上述临时依赖目录。测试范围为 `test_macro_set_f1.py`、`test_rescore_msf1.py`、`test_m2m*.py`、`test_many_to_many_metrics.py`（共 101 项）。
+
+2026-11-08 的 CGP-v1 验证在上述 101 项相关回归基础上增加 32 项 CGP 测试，共 **133 项通过**。新增测试可分别运行：
+
+```bash
+python -m unittest discover -s tests -p test_cross_graph_pairs.py -v
+python -m unittest discover -s tests -p test_rescore_cgp.py -v
+```

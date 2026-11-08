@@ -43,6 +43,7 @@ import torch
 
 from PlanetAlign.data import Dataset
 from PlanetAlign.metrics import many_to_many_scores
+from PlanetAlign.metrics.many_to_many import _is_cgp_metric
 
 
 EntityMap = Dict[str, Dict[str, List[int]]]
@@ -346,15 +347,21 @@ def evaluate_predictions(
 
     Pass allow_overlap=True only for an overlapping benchmark. Invalid MSF1
     predictions raise InvalidPredictionError instead of being repaired.
+    CGP-v1 is non-overlapping only; CGP-only requests bypass entity-id matching.
     """
 
+    requested = None if metrics is None else tuple(metrics)
+    if requested and any(_is_cgp_metric(m) for m in requested) and set(sides) != {"src", "tgt"}:
+        raise ValueError("CGP requires both src and tgt; side projection is not supported.")
     gt = normalize_entity_map(gt_entities, sides=sides)
     raw_pred = normalize_entity_map(pred_entities, sides=sides)
+    if requested and all(_is_cgp_metric(m) for m in requested):
+        return many_to_many_scores(gt, raw_pred, metrics=requested, allow_overlap=allow_overlap)
     if match_entities:
         pred = align_prediction_to_ground_truth(gt, raw_pred, sides=sides)
     else:
         pred = complete_prediction_entities(gt, raw_pred, sides=sides, keep_extra=True)
-    return many_to_many_scores(gt, raw_pred, metrics=metrics, aligned_pred_entities=pred,
+    return many_to_many_scores(gt, raw_pred, metrics=requested, aligned_pred_entities=pred,
                                allow_overlap=allow_overlap)
 
 
